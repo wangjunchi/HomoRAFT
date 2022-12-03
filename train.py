@@ -3,6 +3,7 @@ import yaml
 import torch
 from tqdm import tqdm
 import numpy as np
+from datetime import datetime
 
 from Dataset.coco import Coco
 from Models.Raft import Model as Raft
@@ -25,7 +26,11 @@ def train_one_epoch(model, train_dataloader, optimizer, scheduler, loss_fn, cur_
     model.train()
 
     epoch_loss = []
-    for iter_no, batch in tqdm(enumerate(train_dataloader), total=len(train_dataloader)):
+    for iter_no, batch in tqdm(enumerate(train_dataloader), total=steps_per_epoch):
+        
+        if iter_no >= steps_per_epoch:
+            break
+
         # global step
         step = cur_epoch * steps_per_epoch + iter_no + 1
 
@@ -46,6 +51,7 @@ def train_one_epoch(model, train_dataloader, optimizer, scheduler, loss_fn, cur_
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
+        scheduler.step()
         # log
         if step % 100 == 0:
             # Calc norm of gradients
@@ -68,14 +74,14 @@ def train_one_epoch(model, train_dataloader, optimizer, scheduler, loss_fn, cur_
             mace = compute_mace(h_pred, h_gt, four_points)
 
             summary_writer.add_scalars('loss', {'train': loss.item()}, step)
-            summary_writer.add_scalar('lr', scheduler.get_lr()[0], step)
+            summary_writer.add_scalar('lr', scheduler.get_last_lr()[0], step)
             summary_writer.add_scalar('grad_norm', total_norm, step)
             summary_writer.add_scalars('mace', {'train': mace}, step)
             summary_writer.flush()
             print('Epoch: {} iter: {}/{} loss: {}, mace: {}'.format(cur_epoch, iter_no + 1, steps_per_epoch, loss.item(), mace))
 
-            # debug
-            break
+            # # debug
+            # break
 
     print('Epoch: {} loss: {}'.format(cur_epoch, np.mean(epoch_loss)))
     summary_writer.add_scalars('epoch_loss', {'train': np.mean(epoch_loss)}, cur_epoch)
@@ -117,6 +123,10 @@ def eval_one_epoch(model, data_loader, loss_fn, cur_epoch, steps_per_epoch, summ
     summary_writer.add_scalars('mace', {'test': np.mean(epoch_mace)}, (cur_epoch + 1) * steps_per_epoch)
     summary_writer.flush()
 
+    print('Epoch: {} val loss: {}'.format(cur_epoch, np.mean(epoch_loss)))
+    print('Epoch: {} val mean mace: {}'.format(cur_epoch, np.mean(epoch_mace)))
+    print('Epoch: {} val mdeian mace: {}'.format(cur_epoch, np.median(epoch_mace)))
+
 
 def do_train(model, train_loader, val_loader, optimizer, scheduler, loss_fn, checkpointer, checkpoint_arguments, config):
     log_dir = config['logging']['dir']
@@ -142,7 +152,12 @@ def main(config_file_path):
     with open(config_file_path, 'r') as file:
         config = yaml.full_load(file)
 
+    config['logging']['dir'] = config['logging']['dir'] + '-' + datetime.now().strftime('%y-%m-%d-%H_%M_%S')
+    print("log dir: ", config['logging']['dir'])
+
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    print('using device: ', device)
+
 
     # load dataset and dataloader
     dataset = Coco(config['data'], 'cpu')

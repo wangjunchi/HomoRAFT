@@ -1,9 +1,9 @@
 data:
     name: 'coco'
-    data_path: '~/sp1/dataset/cocos'
+    data_path: '/cluster/project/infk/cvg/students/junwang/datasets/cocos'
     seed: 42
-    batch_size: 8
-    test_batch_size: 32
+    batch_size: 16
+    test_batch_size: 16
     sizes:
         train: -1
         val: 500
@@ -45,9 +45,9 @@ model:
 
 trainer:
     epochs: 25
-    steps_per_epoch: 3600 # when batch_szie=64, it is 3600, 230400 images in total
+    steps_per_epoch: 5000 # when batch_szie=16, it is 5174, 82784 images in total
     lr: 0.0001
-    milestones: [30000, 60000, 90000]
+    milestones: [40000, 80000, 110000]
     lr_decay: 0.1
     save_period: 1
 

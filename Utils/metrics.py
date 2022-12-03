@@ -1,6 +1,7 @@
 import torch
 import numpy as np
 import cv2
+import traceback
 
 
 def _postprocess(perspective_field):
@@ -35,7 +36,13 @@ def compute_homography(flow_pred, mask):
         mask_i = mask[i].reshape(-1).cpu().detach().numpy()
         src_pts = coordinate_field[i][mask_i == 1]
         dst_pts = mapping_field[i][mask_i == 1]
-        h = cv2.findHomography(np.float32(src_pts), np.float32(dst_pts), cv2.RANSAC, 10)[0]
+        try:
+            h = cv2.findHomography(np.float32(src_pts), np.float32(dst_pts), cv2.RANSAC, 10)[0]
+        except Exception:
+            print("valid points in mask = ", mask_i.sum())
+            traceback.print_exc()
+            print("using identity matrix instead")
+            h = np.eye(3)
         predicted_h.append(h)
 
     predicted_h = np.array(predicted_h)
