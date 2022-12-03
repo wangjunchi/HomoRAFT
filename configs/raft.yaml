@@ -50,6 +50,7 @@ trainer:
     milestones: [30000, 60000, 90000]
     lr_decay: 0.1
     save_period: 1
+    loss: 'combined_loss'
 
 
 logging:

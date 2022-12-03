@@ -58,7 +58,21 @@ class _Dataset(Dataset):
         H, rot_angle = sample_homography(
             img_size, **self._config['warped_pair']['params'])
         rot_angle = np.clip(np.abs(rot_angle) / self._angle_lim, 0., 1.)
+
+        # check if the homography is valid
+        H_inv = np.linalg.inv(H)
+        valid_mask = compute_valid_mask(H_inv, img_size)
+        while valid_mask.sum() < 0.2 * img_size[0] * img_size[1]:
+            # print('Invalid homography, overlap ratio: {} ,resampling...'.format(valid_mask.sum() / (img_size[0] * img_size[1])))
+            H, rot_angle = sample_homography(
+                img_size, **self._config['warped_pair']['params'])
+            rot_angle = np.clip(np.abs(rot_angle) / self._angle_lim, 0., 1.)
+            H_inv = np.linalg.inv(H)
+            valid_mask = compute_valid_mask(H_inv, img_size)
+        # print('Valid homography, overlap ratio: {:.2f}'.format(valid_mask.sum() / (img_size[0] * img_size[1])))
+
         self._config['warped_pair']['params']['rotation'] = True
+
         H_inv = np.linalg.inv(H)
         img1 = cv2.warpPerspective(img0, H, (img_size[1], img_size[0]),
                                    flags=cv2.INTER_LINEAR)
@@ -141,35 +155,38 @@ if __name__ == '__main__':
 
     config = yaml.load(open('dataset_config.yaml'), Loader=yaml.FullLoader)
     dataset = Coco(config['data'], 'cpu')
-    dataloader = DataLoader(dataset.get_dataset('train'),
+    dataloader = DataLoader(dataset.get_dataset('val'),
                             batch_size=1,
                             shuffle=False,
                             num_workers=0)
-    print("total number of images: ", len(dataset.get_dataset('train')))
-    for step, batch in enumerate(dataloader):
-        print(batch['image0'].shape)
-        print(batch['image1'].shape)
-        print(batch['homography'].shape)
-        print(batch['valid_mask0'].shape)
-        print(batch['valid_mask1'].shape)
-        print(batch['rot_angle'])
-        plt.imshow(batch['image0'][0].permute(1, 2, 0).numpy())
-        plt.show()
-        plt.imshow(batch['image1'][0].permute(1, 2, 0).numpy())
-        plt.show()
-        plt.imshow(batch['valid_mask0'][0].numpy())
-        plt.show()
-        plt.imshow(batch['valid_mask1'][0].numpy())
-        plt.show()
-
-        # draw matching
-        plt.figure(dpi=300)
-        image0 = batch['image0'][0].permute(1, 2, 0).numpy()
-        image1 = batch['image1'][0].permute(1, 2, 0).numpy()
-        matching = batch['matching'][0].numpy()
-        mask = batch['valid_mask0'][0].numpy()
-        img_match = draw_matching(image0, image1, matching, mask)
-        plt.imshow(img_match)
-        plt.show()
-        pass
+    print("total number of images: ", len(dataset.get_dataset('val')))
+    for epoch in range(5):
+        for step, batch in enumerate(dataloader):
+            if step == 3:
+                break
+            # print(batch['image0'].shape)
+            # print(batch['image1'].shape)
+            # print(batch['homography'].shape)
+            # print(batch['valid_mask0'].shape)
+            # print(batch['valid_mask1'].shape)
+            # print(batch['rot_angle'])
+            # plt.imshow(batch['image0'][0].permute(1, 2, 0).numpy())
+            # plt.show()
+            # plt.imshow(batch['image1'][0].permute(1, 2, 0).numpy())
+            # plt.show()
+            plt.imshow(batch['valid_mask0'][0].numpy())
+            plt.show()
+            # plt.imshow(batch['valid_mask1'][0].numpy())
+            # plt.show()
+            #
+            # draw matching
+            plt.figure(dpi=300)
+            image0 = batch['image0'][0].permute(1, 2, 0).numpy()
+            image1 = batch['image1'][0].permute(1, 2, 0).numpy()
+            matching = batch['matching'][0].numpy()
+            mask = batch['valid_mask0'][0].numpy()
+            img_match = draw_matching(image0, image1, matching, mask)
+            plt.imshow(img_match)
+            plt.show()
+            pass
 

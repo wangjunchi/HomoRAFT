@@ -7,6 +7,7 @@ from Models.raft_block.update import BasicUpdateBlock, UpdateModule
 from Models.raft_block.extractor import BasicEncoder
 from Models.raft_block.corr import CorrBlock
 from Models.raft_block.utils import bilinear_sampler, coords_grid, upflow8
+from Models.raft_block.ba import BA
 from Models.raft_block.flow_viz import flow_to_image
 
 from easydict import EasyDict as edict
@@ -79,16 +80,24 @@ class Model(nn.Module):
         coords0, coords1 = self.initialize_flow(image1)
 
         flow_predictions = []
+        homo_predictions = []
         for itr in range(iters):
             coords1 = coords1.detach()
             corr = corr_fn(coords1)  # index correlation volume
 
             flow = coords1 - coords0
 
-            net, up_mask, delta_flow = self.update_block(net, inp, corr, flow)
+            net, up_mask, delta_flow, weights = self.update_block(net, inp, corr, flow)
 
             # F(t+1) = F(t) + \Delta(t)
             coords1 = coords1 + delta_flow
+
+            homography = BA(coords1 - coords0, weights)
+            # rescale homography
+            S = torch.tensor([[8, 0, 0], [0, 8, 0], [0, 0, 1]], device=homography.device, dtype=homography.dtype)
+            S = S.unsqueeze(0).repeat(homography.shape[0], 1, 1)
+            homography = torch.bmm(S, homography)
+            homography = torch.bmm(homography, torch.inverse(S))
 
             # upsample predictions
             if up_mask is None:
@@ -97,11 +106,13 @@ class Model(nn.Module):
                 flow_up = self.upsample_flow(coords1 - coords0, up_mask)
 
             flow_predictions.append(flow_up)
+            homo_predictions.append(homography)
 
-        if test_mode:
-            return coords1 - coords0, flow_up
+        # if test_mode:
+        #     return coords1 - coords0, flow_up
 
-        return flow_predictions
+
+        return flow_predictions, homo_predictions
 
 
 if __name__ == '__main__':
@@ -113,6 +124,6 @@ if __name__ == '__main__':
     image2 = torch.randn(1, 3, 240, 320).cuda()
 
     # forward pass
-    flow_predictions = model(image1, image2, iters=3)
+    flow_predictions, homo_predictions = model(image1, image2, iters=3)
     print(len(flow_predictions))
     print(flow_predictions[0].shape)

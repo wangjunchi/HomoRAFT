@@ -10,7 +10,7 @@ from Models.Raft import Model as Raft
 from torch.utils.tensorboard import SummaryWriter
 from torch.utils.data import DataLoader
 
-from Utils.loss import sequence_loss
+from Utils.loss import sequence_loss, corner_loss
 from Utils.checkpoint import CheckPointer
 from Utils.metrics import compute_mace, compute_homography
 
@@ -33,14 +33,30 @@ def train_one_epoch(model, train_dataloader, optimizer, scheduler, loss_fn, cur_
         image_1 = batch['image1']
         mask_0 = batch['valid_mask0']
         flow_gt = batch['flow']
+
+        B, _, H, W = image_0.shape
         # model forward
         image_0 = image_0.cuda()
         image_1 = image_1.cuda()
-        flow_pred = model(image_0, image_1, iters=5)
+        flow_pred, homo_pred = model(image_0, image_1, iters=5)
         # loss
         flow_gt = flow_gt.cuda()
         mask_0 = mask_0.cuda()
-        loss = loss_fn(flow_pred, flow_gt, mask_0)
+        loss = 0.0
+        loss_flow = 0.0  # only for output
+        if loss_fn == 'sequence_loss':
+            loss += sequence_loss(flow_pred, flow_gt, mask=mask_0)
+        elif loss_fn == 'combined_loss':
+            loss += sequence_loss(flow_pred, flow_gt, mask=mask_0)
+            loss_flow = loss.item()
+            # compute corner_loss
+            four_points = torch.tensor([[0, 0], [W-1, 0], [W-1, H-1], [0, H-1]], dtype=torch.float32, requires_grad=True).cuda()
+            four_points = four_points.unsqueeze(0).repeat(B, 1, 1)
+            gt_h = batch['homography'].cuda()
+            loss += corner_loss(homo_pred, gt_h, four_points)
+        else:
+            assert False, 'loss_fn not supported'
+
         epoch_loss.append(loss.item())
         # backward
         optimizer.zero_grad()
@@ -58,12 +74,13 @@ def train_one_epoch(model, train_dataloader, optimizer, scheduler, loss_fn, cur_
 
             # compute homography and mace
             final_flow = flow_pred[-1]
-            h_pred = compute_homography(final_flow, mask_0)
+            # h_pred = compute_homography(final_flow, mask_0)
+            h_pred = homo_pred[-1]
             h_gt = batch['homography']
             four_points = [[0, 0],
-                           [image_0.shape[-1], 0],
-                           [image_0.shape[-1], image_0.shape[-2]],
-                           [0, image_0.shape[-2]]]
+                           [image_0.shape[-1]-1, 0],
+                           [image_0.shape[-1]-1, image_0.shape[-2]-1],
+                           [0, image_0.shape[-2]-1]]
             four_points = np.asarray(four_points, dtype=np.float32)
             mace = compute_mace(h_pred, h_gt, four_points)
 
@@ -72,10 +89,10 @@ def train_one_epoch(model, train_dataloader, optimizer, scheduler, loss_fn, cur_
             summary_writer.add_scalar('grad_norm', total_norm, step)
             summary_writer.add_scalars('mace', {'train': mace}, step)
             summary_writer.flush()
-            print('Epoch: {} iter: {}/{} loss: {}, mace: {}'.format(cur_epoch, iter_no + 1, steps_per_epoch, loss.item(), mace))
+            print('Epoch: {} iter: {}/{} loss: {}, flow_loss: {}, homo_loss: {},mace: {}'.format(cur_epoch, iter_no + 1, steps_per_epoch, loss.item(), loss_flow, loss.item()-loss_flow , mace))
 
-            # debug
-            break
+            # # debug
+            # break
 
     print('Epoch: {} loss: {}'.format(cur_epoch, np.mean(epoch_loss)))
     summary_writer.add_scalars('epoch_loss', {'train': np.mean(epoch_loss)}, cur_epoch)
@@ -94,11 +111,22 @@ def eval_one_epoch(model, data_loader, loss_fn, cur_epoch, steps_per_epoch, summ
             # model forward
             image_0 = image_0.cuda()
             image_1 = image_1.cuda()
-            flow_pred = model(image_0, image_1, iters=5)
+            flow_pred, homo_pred = model(image_0, image_1, iters=5)
             # loss
+            B, _, H, W = image_0.shape
             flow_gt = flow_gt.cuda()
             mask_0 = mask_0.cuda()
-            loss = loss_fn(flow_pred, flow_gt, mask_0)
+            if loss_fn == 'sequence_loss':
+                loss = sequence_loss(flow_pred, flow_gt, mask_0)
+            elif loss_fn == 'combined_loss':
+                loss_1 = sequence_loss(flow_pred, flow_gt, mask_0)
+                # compute corner_loss
+                four_points = torch.tensor([[0, 0], [W - 1, 0], [W - 1, H - 1], [0, H - 1]], dtype=torch.float32).cuda()
+                four_points = four_points.unsqueeze(0).repeat(B, 1, 1)
+                gt_h = batch['homography'].cuda()
+                loss_2 = corner_loss(homo_pred, gt_h, four_points)
+                loss = loss_1 + loss_2 * 0.1
+
             epoch_loss.append(loss.item())
 
             # compute homography and mace
@@ -158,7 +186,7 @@ def main(config_file_path):
     optimizer = torch.optim.Adam(model.parameters(), lr=config['trainer']['lr'])
     scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=config['trainer']['milestones'],
                                                      gamma=config['trainer']['lr_decay'])
-    loss_fn = sequence_loss
+    loss_fn = config['trainer']['loss']
     # checkpoint
     checkpoint_arguments = {"step": 0}
     restart_lr = config['trainer']['restart_learning_rate'] if 'restart_learning_rate' in config[

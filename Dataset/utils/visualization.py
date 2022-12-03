@@ -9,7 +9,7 @@ def draw_matching(image_1, image_2, matching, mask12):
     if image_2.dtype != np.uint8:
         image_2 = (image_2 * 255.0).astype(np.uint8)
 
-    matching = matching * mask12[:, :, None]
+    # matching = matching * mask12[:, :, None]
     matching = matching.astype(np.int32)
 
     full_image = np.concatenate([image_1, image_2], axis=1)
@@ -18,6 +18,8 @@ def draw_matching(image_1, image_2, matching, mask12):
     for i in range(matching.shape[0]):
         for j in range(matching.shape[1]):
             if i % 50 == 0 and j % 50 == 0:
+                if mask12[i,j] == 0:
+                    continue
                 src = (j, i)
                 dst = (matching[i, j, 0] + image_1.shape[1], matching[i, j, 1])
                 rand_color =np.random.randint(0, 255, 3).tolist()
