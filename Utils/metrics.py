@@ -24,18 +24,21 @@ def _postprocess(perspective_field):
     return coordinate_field, mapping_field
 
 
-def compute_homography(flow_pred, mask):
+def compute_homography(flow_pred, mask=None):
 
     coordinate_field, mapping_field = _postprocess(flow_pred)
     # Find best homography fit and its delta
     predicted_h = []
     predicted_delta = []
 
+    if mask is None:
+        mask = torch.ones(flow_pred.shape[0], flow_pred.shape[-2], flow_pred.shape[-1]).cuda()
+
     for i in range(flow_pred.shape[0]):
         mask_i = mask[i].reshape(-1).cpu().detach().numpy()
         src_pts = coordinate_field[i][mask_i == 1]
         dst_pts = mapping_field[i][mask_i == 1]
-        h = cv2.findHomography(np.float32(src_pts), np.float32(dst_pts), cv2.RANSAC, 10)[0]
+        h = cv2.findHomography(np.float32(src_pts), np.float32(dst_pts), cv2.RANSAC, 0.5)[0]
         predicted_h.append(h)
 
     predicted_h = np.array(predicted_h)
