@@ -2,4 +2,4 @@ log/
 .idea/
 lsf.*
 .vs
-.pyc
+*.pyc
