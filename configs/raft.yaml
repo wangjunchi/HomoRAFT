@@ -30,14 +30,14 @@ data:
             rotation: true
             scaling: true
             perspective: true
-            scaling_amplitude: 0.5
+            scaling_amplitude: 0.2
             perspective_amplitude_x: 0.3
             perspective_amplitude_y: 0.3
             patch_ratio: 0.85
             max_angle: 1.5
-            allow_artifacts: true
             n_angles: 100
             n_scales: 20
+            allow_artifacts: true
         valid_border_margin: 3
 
 model:
@@ -46,14 +46,14 @@ model:
 trainer:
     epochs: 25
     steps_per_epoch: 5000 # when batch_szie=16, it is 5174, 82784 images in total
-    lr: 0.0001
-    milestones: [40000, 80000, 110000]
+    lr: 0.001
+    milestones: [40000, 90000, 110000]
     lr_decay: 0.1
     save_period: 1
 
 
 logging:
-    dir: 'log/raft-lr-1e-4'
+    dir: 'log/raft-lr-1e-3'
     step: 100
 
 
