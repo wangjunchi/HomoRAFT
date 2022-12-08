@@ -6,6 +6,7 @@ from torch.utils.data import Dataset, DataLoader
 import argparse
 import cv2
 from tqdm import tqdm
+import torch.nn.functional as F
 
 from Dataset.hpatch.hpatch import HPatchesDataset
 from Models.Raft import Model as RAFT
@@ -72,6 +73,7 @@ def main():
 
             pbar = tqdm(enumerate(test_dataloader), total=len(test_dataloader))
             correct = 0
+            epes = []
             for _, mini_batch in pbar:
                 # get data
                 img1 = mini_batch['patch_1'].to(device)
@@ -79,10 +81,16 @@ def main():
 
 
                 # compute flow
-                flow_pred = model(img1, img2, iters=16)
-                # compute homography and mace
-                final_flow = flow_pred[-1]
-                h_pred = compute_homography(final_flow)
+                flow_pred12 = model(img1, img2, iters=10)
+                final_flow12 = flow_pred12[-1]
+
+                h_pred12 = compute_homography(final_flow12)
+                h_pred12_1 = h_pred12
+
+                flow_pred21 = model(img2, img1, iters=10)
+                final_flow21 = flow_pred21[-1]
+                h_pred21 = compute_homography(final_flow21)
+                h_pred12_2 = np.linalg.inv(h_pred21)
                 h_gt = mini_batch['gt_H'].cpu().numpy()
                 four_points = [[0, 0],
                                [img1.shape[-1]-1, 0],
@@ -90,18 +98,34 @@ def main():
                                [0, img1.shape[-2]-1]]
                 four_points = np.asarray(four_points, dtype=np.float32)
 
-                for i in range(h_pred.shape[0]):
+
+                for i in range(h_pred12_1.shape[0]):
                     H = h_gt[i]
                     H_inv = np.linalg.inv(H)
-                    H_hat = h_pred[i]
+                    H_hat = (h_pred12_1[i] + h_pred12_2[i])/2
+
                     warpped = cv2.perspectiveTransform(np.asarray([four_points]), H_hat).squeeze()
                     rewarp = cv2.perspectiveTransform(np.asarray([warpped]), H_inv).squeeze()
                     delta = four_points - rewarp
                     error = np.linalg.norm(delta, axis=1)
                     error = np.mean(error)
-                    if error < 5:
+                    if error < 3:
                         correct += 1
+
+                    # compute the average endpoint error
+                    S = np.array([0.75, 0, 0, 0, 1, 0, 0, 0, 1]).reshape(3, 3)
+                    # scale the ground truth homography
+                    H = np.matmul(S, np.matmul(H, np.linalg.inv(S)))
+                    H_hat = np.matmul(S, np.matmul(H_hat, np.linalg.inv(S)))
+                    coords = np.meshgrid(np.arange(img1.shape[-2]), np.arange(img1.shape[-2])) # 240 * 240
+                    coords = np.stack(coords, axis=-1)
+                    coords = coords.reshape(-1, 2).astype(np.float32)
+                    target_flow = cv2.perspectiveTransform(np.asarray([coords]), H).squeeze() - coords
+                    est_flow = cv2.perspectiveTransform(np.asarray([coords]), H_hat).squeeze() - coords
+                    epe = np.linalg.norm(target_flow - est_flow, axis=-1)
+                    epes.append(np.mean(epe))
             print('Scene {} accuracy: {}'.format(id+1, correct/len(test_dataset)))
+            print('Scene {} average epe: {}'.format(id+1, np.mean(epes)))
             res.append(correct / len(test_dataloader))
 
 

@@ -122,6 +122,9 @@ def do_train(model, train_loader, val_loader, optimizer, scheduler, loss_fn, che
     log_dir = config['logging']['dir']
     summary_writer = SummaryWriter(log_dir)
 
+    # log config to tensorboard
+    summary_writer.add_text('config', str(config), 0)
+
     epochs = config['trainer']['epochs']
     steps_per_epoch = config['trainer']['steps_per_epoch']
     start_epoch = checkpoint_arguments['step'] // steps_per_epoch
