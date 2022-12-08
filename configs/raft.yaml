@@ -30,7 +30,7 @@ data:
             rotation: true
             scaling: true
             perspective: true
-            scaling_amplitude: 0.2
+            scaling_amplitude: 0.5
             perspective_amplitude_x: 0.3
             perspective_amplitude_y: 0.3
             patch_ratio: 0.85
@@ -44,10 +44,11 @@ model:
     pretrained_model: None
 
 trainer:
-    epochs: 25
+    epochs: 30
     steps_per_epoch: 5000 # when batch_szie=16, it is 5174, 82784 images in total
-    lr: 0.001
-    milestones: [40000, 90000, 110000]
+    lr: 0.0001
+    # milestones: [40000, 90000, 110000]
+    milestones: [1100000]  # no lr decay
     lr_decay: 0.1
     save_period: 1
 
