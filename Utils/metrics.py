@@ -38,7 +38,7 @@ def compute_homography(flow_pred, mask=None):
         mask_i = mask[i].reshape(-1).cpu().detach().numpy()
         src_pts = coordinate_field[i][mask_i == 1]
         dst_pts = mapping_field[i][mask_i == 1]
-        h = cv2.findHomography(np.float32(src_pts), np.float32(dst_pts), cv2.RANSAC, 1)[0]
+        h = cv2.findHomography(np.float32(src_pts), np.float32(dst_pts), cv2.RANSAC, 0.5)[0]
         predicted_h.append(h)
 
     predicted_h = np.array(predicted_h)

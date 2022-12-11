@@ -26,7 +26,7 @@ def main():
     parser.add_argument('--image-data-path', type=str,
                         default='/home/junchi/sp1/dataset/hpatches-sequences-release',
                         help='path to folder containing training images')
-    parser.add_argument('--ckpt', type=str, default='../model_24_epoch.pth',
+    parser.add_argument('--ckpt', type=str, default='../ba_model_29_epoch.pth',
                         help='Checkpoint to use')
     parser.add_argument('--batch-size', type=int, default=1,
                         help='evaluation batch size')
@@ -81,13 +81,13 @@ def main():
 
 
                 # compute flow
-                flow_pred12 = model(img1, img2, iters=10)
+                flow_pred12, homo_pred, residual = model(img1, img2, iters=20)
                 final_flow12 = flow_pred12[-1]
 
                 h_pred12 = compute_homography(final_flow12)
                 h_pred12_1 = h_pred12
 
-                flow_pred21 = model(img2, img1, iters=10)
+                flow_pred21, homo_pred, residual = model(img2, img1, iters=20)
                 final_flow21 = flow_pred21[-1]
                 h_pred21 = compute_homography(final_flow21)
                 h_pred12_2 = np.linalg.inv(h_pred21)
@@ -103,13 +103,14 @@ def main():
                     H = h_gt[i]
                     H_inv = np.linalg.inv(H)
                     H_hat = (h_pred12_1[i] + h_pred12_2[i])/2
+                    # H_hat = h_pred12_1[i]
 
                     warpped = cv2.perspectiveTransform(np.asarray([four_points]), H_hat).squeeze()
                     rewarp = cv2.perspectiveTransform(np.asarray([warpped]), H_inv).squeeze()
                     delta = four_points - rewarp
                     error = np.linalg.norm(delta, axis=1)
                     error = np.mean(error)
-                    if error < 3:
+                    if error <= 3:
                         correct += 1
 
                     # compute the average endpoint error
@@ -123,6 +124,8 @@ def main():
                     target_flow = cv2.perspectiveTransform(np.asarray([coords]), H).squeeze() - coords
                     est_flow = cv2.perspectiveTransform(np.asarray([coords]), H_hat).squeeze() - coords
                     epe = np.linalg.norm(target_flow - est_flow, axis=-1)
+                    epe = np.clip(epe, 0, 240)
+                    # if np.mean(epe) < 100:
                     epes.append(np.mean(epe))
             print('Scene {} accuracy: {}'.format(id+1, correct/len(test_dataset)))
             print('Scene {} average epe: {}'.format(id+1, np.mean(epes)))
