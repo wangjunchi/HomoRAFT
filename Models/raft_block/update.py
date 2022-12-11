@@ -6,12 +6,19 @@ import torch.nn.functional as F
 class FlowHead(nn.Module):
     def __init__(self, input_dim=128, hidden_dim=256):
         super(FlowHead, self).__init__()
-        self.conv1 = nn.Conv2d(input_dim, hidden_dim, 3, padding=1)
-        self.conv2 = nn.Conv2d(hidden_dim, 2, 3, padding=1)
-        self.relu = nn.ReLU(inplace=True)
+        # self.conv1 = nn.Conv2d(input_dim, hidden_dim, 3, padding=1)
+        # self.conv2 = nn.Conv2d(hidden_dim, 2, 3, padding=1)
+        # self.relu = nn.ReLU(inplace=True)
+        self.layer = nn.Sequential(
+            nn.Conv2d(input_dim, hidden_dim, 3, padding=1),
+            nn.GroupNorm(hidden_dim//8, hidden_dim),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(hidden_dim, 2, 3, padding=1)
+        )
 
     def forward(self, x):
-        return self.conv2(self.relu(self.conv1(x)))
+        # return self.conv2(self.relu(self.conv1(x)))
+        return self.layer(x)
 
 class ConvGRU(nn.Module):
     def __init__(self, hidden_dim=128, input_dim=192+128):
@@ -80,20 +87,50 @@ class BasicMotionEncoder(nn.Module):
     def __init__(self, args):
         super(BasicMotionEncoder, self).__init__()
         cor_planes = args.corr_levels * (2*args.corr_radius + 1)**2
-        self.convc1 = nn.Conv2d(cor_planes, 256, 1, padding=0)
-        self.convc2 = nn.Conv2d(256, 192, 3, padding=1)
-        self.convf1 = nn.Conv2d(2, 128, 7, padding=3)
-        self.convf2 = nn.Conv2d(128, 64, 3, padding=1)
-        self.conv = nn.Conv2d(64+192, 128-2, 3, padding=1)
+        # self.convc1 = nn.Conv2d(cor_planes, 256, 1, padding=0)
+        # self.convc2 = nn.Conv2d(256, 192, 3, padding=1)
+        # self.convf1 = nn.Conv2d(4, 128, 7, padding=3)
+        # self.convf2 = nn.Conv2d(128, 64, 3, padding=1)
+        # self.conv = nn.Conv2d(64+192, 128-4, 3, padding=1)
+
+        self.corr_layer1 = nn.Sequential(
+            nn.Conv2d(cor_planes, 256, 1, padding=0),
+            nn.GroupNorm(256//8, 256),
+            nn.ReLU(inplace=True),
+        )
+        self.corr_layer2 = nn.Sequential(
+            nn.Conv2d(256, 192, 3, padding=1),
+            nn.GroupNorm(192//8, 192),
+            nn.ReLU(inplace=True),
+        )
+        self.flow_layer1 = nn.Sequential(
+            nn.Conv2d(4, 128, 7, padding=3),
+            nn.GroupNorm(128//8, 128),
+            nn.ReLU(inplace=True),
+        )
+        self.flow_layer2 = nn.Sequential(
+            nn.Conv2d(128, 64, 3, padding=1),
+            nn.GroupNorm(64//8, 64),
+            nn.ReLU(inplace=True),
+        )
+        self.final_layer = nn.Sequential(
+            nn.Conv2d(64+192, 128-4, 3, padding=1),
+            nn.ReLU(inplace=True),
+        )
 
     def forward(self, flow, corr):
-        cor = F.relu(self.convc1(corr))
-        cor = F.relu(self.convc2(cor))
-        flo = F.relu(self.convf1(flow))
-        flo = F.relu(self.convf2(flo))
+        # cor = F.relu(self.convc1(corr))
+        # cor = F.relu(self.convc2(cor))
+        # flo = F.relu(self.convf1(flow))
+        # flo = F.relu(self.convf2(flo))
+        cor = self.corr_layer1(corr)
+        cor = self.corr_layer2(cor)
+        flo = self.flow_layer1(flow)
+        flo = self.flow_layer2(flo)
 
         cor_flo = torch.cat([cor, flo], dim=1)
-        out = F.relu(self.conv(cor_flo))
+        out = self.final_layer(cor_flo)
+        # out = F.relu(self.conv(cor_flo))
         return torch.cat([out, flow], dim=1)
 
 class SmallUpdateBlock(nn.Module):
@@ -121,11 +158,13 @@ class BasicUpdateBlock(nn.Module):
 
         self.mask = nn.Sequential(
             nn.Conv2d(128, 256, 3, padding=1),
+            nn.GroupNorm(32, 256),
             nn.ReLU(inplace=True),
             nn.Conv2d(256, 64*9, 1, padding=0))
 
         self.weight = nn.Sequential(
             nn.Conv2d(128, 128, 3, padding=1),
+            nn.GroupNorm(16, 128),
             nn.ReLU(inplace=True),
             nn.Conv2d(128, 1, 3, padding=1),
             nn.Sigmoid())
@@ -194,7 +233,7 @@ class UpdateModule(nn.Module):
             nn.Conv2d(128, 128, 3, padding=1),
             nn.ReLU(inplace=True),
             nn.Conv2d(128, 2, 3, padding=1),
-            GradientClip())
+           )
 
         self.gru = ConvGRU(128, 128+128+64)
 

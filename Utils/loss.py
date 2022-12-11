@@ -34,11 +34,15 @@ def corner_loss(pred_h, gt_h, four_corners, gamma=0.8):
     # B*4*3
     four_corners_h = torch.cat([four_corners, torch.ones((four_corners.shape[0], four_corners.shape[1], 1), device=four_corners.device, dtype=four_corners.dtype)], dim=2)
 
+    # rescale the gt_h
+    S = torch.tensor([[1 / 8, 0, 0], [0, 1 / 8, 0], [0, 0, 1]])[None, :, :].repeat(four_corners.shape[0], 1, 1).to(four_corners.device)
+    gt_h = S @ gt_h @ torch.linalg.inv(S)
 
     n_predictions = len(pred_h)
     total_loss = 0.0
     for i in range(n_predictions):
         i_weight = gamma**(n_predictions - i - 1)
+
 
         gt_h_inv = torch.inverse(gt_h)
 
@@ -46,14 +50,16 @@ def corner_loss(pred_h, gt_h, four_corners, gamma=0.8):
         # B*4*3
         # four_corners_h = torch.cat([four_corners, torch.ones((four_corners.shape[0], four_corners.shape[1], 1), device=four_corners.device, dtype=four_corners.dtype)], dim=2)
 
-        reproject_matrix = torch.bmm(gt_h_inv, pred_h[i])
+        est_h = pred_h[i]
+
+        reproject_matrix = torch.bmm(gt_h_inv, est_h)
         reprojected_corners = torch.bmm(reproject_matrix, four_corners_h.permute(0, 2, 1)).permute(0, 2, 1)
 
         # compute reprojection error
         reprojected_corners = reprojected_corners[:, :, :2] / reprojected_corners[:, :, 2:]
         i_loss = smooth_l1_loss(reprojected_corners, four_corners, reduction='mean')
         # take log to make the loss more stable
-        i_loss = torch.log(i_loss + 1)
+        # i_loss = torch.log(i_loss + 1)
         # i_loss = torch.clamp(i_loss, min=0, max=5)
         total_loss += i_weight * i_loss
 
@@ -73,7 +79,16 @@ def corner_loss(pred_h, gt_h, four_corners, gamma=0.8):
     #
     # return loss / four_corners.shape[0]
 
+def residual_loss(residuals, gamma=0.9):
+    """ loss on system residuals """
+    residual_loss = 0.0
+    n = len(residuals)
 
+    for i in range(n):
+        w = gamma ** (n - i - 1)
+        residual_loss += w * residuals[i].abs().mean()
+
+    return residual_loss
 
 if __name__ == '__main__':
     # test corner loss

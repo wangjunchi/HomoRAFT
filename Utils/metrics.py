@@ -52,7 +52,8 @@ def compute_mace(pred_h, gt_h, four_points):
     # Compute MACE
     mace = []
     gt_h = gt_h.cpu().detach().numpy()
-    pred_h = pred_h.cpu().detach().numpy()
+    if type(pred_h) == torch.Tensor:
+        pred_h = pred_h.cpu().detach().numpy()
     for i in range(gt_h.shape[0]):
         delta_gt = cv2.perspectiveTransform(np.asarray([four_points]), gt_h[i]).squeeze() - four_points
         delta_pred = cv2.perspectiveTransform(np.asarray([four_points]), pred_h[i]).squeeze() - four_points

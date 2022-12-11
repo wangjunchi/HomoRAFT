@@ -7,9 +7,9 @@ from Models.raft_block.update import BasicUpdateBlock, UpdateModule
 from Models.raft_block.extractor import BasicEncoder
 from Models.raft_block.corr import CorrBlock
 from Models.raft_block.utils import bilinear_sampler, coords_grid, upflow8
-from Models.raft_block.ba import BA
+from Models.raft_block.ba_svd import compute_h_dlt
 from Models.raft_block.flow_viz import flow_to_image
-
+from Models.raft_block.ba import BA_Homography
 from easydict import EasyDict as edict
 
 
@@ -78,26 +78,54 @@ class Model(nn.Module):
         inp = torch.relu(inp)
 
         coords0, coords1 = self.initialize_flow(image1)
-
-        flow_predictions = []
-        homo_predictions = []
+        target = coords1.clone()
+        flow_list = []
+        homo_list = []
+        residual_list = []
+        homo_guess = torch.eye(3).unsqueeze(0).repeat(coords1.shape[0], 1, 1).to(coords1.device)
         for itr in range(iters):
             coords1 = coords1.detach()
-            corr = corr_fn(coords1)  # index correlation volume
+            homo_guess = homo_guess.detach()
+            homo_guess = torch.flatten(homo_guess, start_dim=1)[..., :8]
+            target = target.detach()
 
+            corr = corr_fn(coords1)  # index correlation volume
+            resd = target - coords1
             flow = coords1 - coords0
 
-            net, up_mask, delta_flow, weights = self.update_block(net, inp, corr, flow)
+            motion = torch.cat([flow, resd], dim=1).clamp(-64.0, 64.0)
+            # motion = flow
+
+            net, up_mask, delta_flow, weights = self.update_block(net, inp, corr, motion)
 
             # F(t+1) = F(t) + \Delta(t)
-            coords1 = coords1 + delta_flow
+            target = coords1 + delta_flow
+            # h_svd = compute_h_dlt(target - coords0, None)
 
-            homography = BA(coords1 - coords0, weights)
-            # rescale homography
-            S = torch.tensor([[8, 0, 0], [0, 8, 0], [0, 0, 1]], device=homography.device, dtype=homography.dtype)
-            S = S.unsqueeze(0).repeat(homography.shape[0], 1, 1)
-            homography = torch.bmm(S, homography)
-            homography = torch.bmm(homography, torch.inverse(S))
+            weights = weights.permute(0,2,3,1).reshape(weights.shape[0], -1).contiguous()
+            # weights = weights.repeat(1, 1, 1, 2)
+            # add 0s to last column
+            # weights = torch.cat([weights, torch.zeros_like(weights[:, :, :, :1])], dim=3)
+
+            # torch.save(target, 'target.pt')
+            # homo_guess = BA_Homography(coords0, target, weights, homo_guess)
+            H = compute_h_dlt(target - coords0, weights)
+            # H = H.detach()
+            # append 1 to H
+            # homo_guess = torch.cat([homo_guess, torch.ones(homo_guess.shape[0], 1).to(homo_guess.device)], dim=1)
+            # homo_guess = homo_guess.view(homo_guess.shape[0], 3, 3)
+            # homo_list.append(homo_guess)
+
+            # apply H to coords0
+            coord0_pts = torch.flatten(coords0.detach(), start_dim=2).permute(0, 2, 1)
+            # convert to homogeneous coordinates
+            coord0_pts = torch.cat([coord0_pts, torch.ones(coord0_pts.shape[0], coord0_pts.shape[1], 1).to(coord0_pts.device)], dim=2)
+            coord1_pts = torch.bmm(H, coord0_pts.permute(0, 2, 1)).permute(0, 2, 1)
+            coord1_pts = coord1_pts[..., :2] / coord1_pts[..., 2:]
+            coords1 = coord1_pts.permute(0, 2, 1).view(coords1.shape)
+
+            residual = target - coords1
+            residual_list.append(residual)
 
             # upsample predictions
             if up_mask is None:
@@ -105,14 +133,11 @@ class Model(nn.Module):
             else:
                 flow_up = self.upsample_flow(coords1 - coords0, up_mask)
 
-            flow_predictions.append(flow_up)
-            homo_predictions.append(homography)
-
+            flow_list.append(flow_up)
         # if test_mode:
         #     return coords1 - coords0, flow_up
 
-
-        return flow_predictions, homo_predictions
+        return flow_list, homo_list, residual_list
 
 
 if __name__ == '__main__':
@@ -120,10 +145,10 @@ if __name__ == '__main__':
     model.cuda()
 
     # using fake input
-    image1 = torch.randn(1, 3, 240, 320).cuda()
-    image2 = torch.randn(1, 3, 240, 320).cuda()
+    image1 = torch.randn(2, 3, 240, 320).cuda()
+    image2 = torch.randn(2, 3, 240, 320).cuda()
 
     # forward pass
-    flow_predictions, homo_predictions = model(image1, image2, iters=3)
+    flow_predictions, homo_predictions, residuals = model(image1, image2, iters=3)
     print(len(flow_predictions))
     print(flow_predictions[0].shape)

@@ -10,7 +10,7 @@ from Models.Raft import Model as Raft
 from torch.utils.tensorboard import SummaryWriter
 from torch.utils.data import DataLoader
 
-from Utils.loss import sequence_loss, corner_loss
+from Utils.loss import sequence_loss, corner_loss, residual_loss
 from Utils.checkpoint import CheckPointer
 from Utils.metrics import compute_mace, compute_homography
 
@@ -38,22 +38,24 @@ def train_one_epoch(model, train_dataloader, optimizer, scheduler, loss_fn, cur_
         # model forward
         image_0 = image_0.cuda()
         image_1 = image_1.cuda()
-        flow_pred, homo_pred = model(image_0, image_1, iters=5)
+        flow_pred, homo_pred, residual = model(image_0, image_1, iters=5)
         # loss
         flow_gt = flow_gt.cuda()
         mask_0 = mask_0.cuda()
         loss = 0.0
         loss_flow = 0.0  # only for output
         if loss_fn == 'sequence_loss':
-            loss += sequence_loss(flow_pred, flow_gt, mask=mask_0)
+            loss += sequence_loss(flow_pred, flow_gt, mask=mask_0, gamma=0.9)
         elif loss_fn == 'combined_loss':
-            loss += sequence_loss(flow_pred, flow_gt, mask=mask_0)
+            loss = sequence_loss(flow_pred, flow_gt, mask=mask_0, gamma=0.8)
             loss_flow = loss.item()
-            # compute corner_loss
-            four_points = torch.tensor([[0, 0], [W-1, 0], [W-1, H-1], [0, H-1]], dtype=torch.float32, requires_grad=True).cuda()
-            four_points = four_points.unsqueeze(0).repeat(B, 1, 1)
-            gt_h = batch['homography'].cuda()
-            loss += corner_loss(homo_pred, gt_h, four_points)
+            # # compute corner_loss
+            # four_points = torch.tensor([[0, 0], [W//8-1, 0], [W//8-1, H//8-1], [0, H//8-1]], dtype=torch.float32).cuda()
+            # four_points = four_points.unsqueeze(0).repeat(B, 1, 1)
+            # gt_h = batch['homography'].cuda()
+            # loss += corner_loss(homo_pred, gt_h, four_points, gamma=0.9) * 0.1
+            # compute residual loss
+            loss += + residual_loss(residual, gamma=0.8) * 5
         else:
             assert False, 'loss_fn not supported'
 
@@ -61,9 +63,11 @@ def train_one_epoch(model, train_dataloader, optimizer, scheduler, loss_fn, cur_
         # backward
         optimizer.zero_grad()
         loss.backward()
+        # gradient clip
+        torch.nn.utils.clip_grad_norm_(model.parameters(), 2.5)
         optimizer.step()
         # log
-        if step % 100 == 0:
+        if step % 20 == 0:
             # Calc norm of gradients
             total_norm = 0
             for p in model.parameters():
@@ -74,8 +78,8 @@ def train_one_epoch(model, train_dataloader, optimizer, scheduler, loss_fn, cur_
 
             # compute homography and mace
             final_flow = flow_pred[-1]
-            # h_pred = compute_homography(final_flow, mask_0)
-            h_pred = homo_pred[-1]
+            h_pred = compute_homography(final_flow, mask_0)
+            # h_pred = homo_pred[-1]
             h_gt = batch['homography']
             four_points = [[0, 0],
                            [image_0.shape[-1]-1, 0],
@@ -200,11 +204,11 @@ def main(config_file_path):
     checkpoint_arguments.update(extra_checkpoint_data)
 
     # load pretrained model
-    pretrained_model = config['model']['pretrained'] if 'pretrained' in config['model'] is not None else None
+    pretrained_model = config['model']['pretrained_model'] if 'pretrained_model' in config['model'] is not None else None
     if pretrained_model is not None:
         checkpoint = torch.load(pretrained_model, map_location=torch.device("cpu"))
         model_ = model
-        model_.load_state_dict(checkpoint.pop("model"))
+        model_.load_state_dict(checkpoint.pop("model"), strict=False)
         print('Pretrained model loaded!')
 
     do_train(model, train_loader, val_loader, optimizer, scheduler, loss_fn, checkpointer, checkpoint_arguments, config)
