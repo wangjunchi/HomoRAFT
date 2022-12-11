@@ -26,7 +26,7 @@ def main():
     parser.add_argument('--image-data-path', type=str,
                         default='/home/junchi/sp1/dataset/hpatches-sequences-release',
                         help='path to folder containing training images')
-    parser.add_argument('--ckpt', type=str, default='../model_24_epoch.pth',
+    parser.add_argument('--ckpt', type=str, default='../model_24_epoch_new.pth',
                         help='Checkpoint to use')
     parser.add_argument('--batch-size', type=int, default=1,
                         help='evaluation batch size')
@@ -79,6 +79,7 @@ def main():
                 img1 = mini_batch['patch_1'].to(device)
                 img2 = mini_batch['patch_2'].to(device)
 
+                # mask = mini_batch['mask'].to(device)
 
                 # compute flow
                 flow_pred12 = model(img1, img2, iters=10)
@@ -120,12 +121,23 @@ def main():
                     coords = np.meshgrid(np.arange(img1.shape[-2]), np.arange(img1.shape[-2])) # 240 * 240
                     coords = np.stack(coords, axis=-1)
                     coords = coords.reshape(-1, 2).astype(np.float32)
-                    target_flow = cv2.perspectiveTransform(np.asarray([coords]), H).squeeze() - coords
-                    est_flow = cv2.perspectiveTransform(np.asarray([coords]), H_hat).squeeze() - coords
+                    target_flow = cv2.perspectiveTransform(np.asarray([coords]), H).squeeze()
+                    est_flow = cv2.perspectiveTransform(np.asarray([coords]), H_hat).squeeze()
+
+                    # compute mask
+                    # applying mask
+                    mask_x_gt = np.logical_and(target_flow[:, 0] >= 0, target_flow[:, 0] <= 240)
+                    mask_y_gt = np.logical_and(target_flow[:, 1] >= 0, target_flow[:, 1] <= 240)
+                    mask_gt = mask_x_gt & mask_y_gt
+                    # mask_gt = np.concatenate((mask_xx_gt[:, None], mask_xx_gt[:, None]), axis=1)
+                    target_flow = target_flow[mask_gt, :]
+                    est_flow = est_flow[mask_gt, :]
+
                     epe = np.linalg.norm(target_flow - est_flow, axis=-1)
                     epes.append(np.mean(epe))
             print('Scene {} accuracy: {}'.format(id+1, correct/len(test_dataset)))
             print('Scene {} average epe: {}'.format(id+1, np.mean(epes)))
+            print('Scene {} median epe: {}'.format(id + 1, np.median(epes)))
             res.append(correct / len(test_dataloader))
 
 
