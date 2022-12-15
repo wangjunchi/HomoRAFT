@@ -81,6 +81,7 @@ class Model(nn.Module):
         flow_list = []
         homo_list = []
         residual_list = []
+        weight_list = []
         homo_guess = torch.eye(3).unsqueeze(0).repeat(coords1.shape[0], 1, 1).to(coords1.device)
         for itr in range(iters):
             coords1 = coords1.detach()
@@ -100,7 +101,7 @@ class Model(nn.Module):
             # F(t+1) = F(t) + \Delta(t)
             target = coords1 + delta_flow
             # h_svd = compute_h_dlt(target - coords0, None)
-
+            weight_list.append(weights.detach())
             weights = weights.permute(0,2,3,1).reshape(weights.shape[0], -1).contiguous()
             # weights = weights.repeat(1, 1, 1, 2)
             # add 0s to last column
@@ -136,7 +137,7 @@ class Model(nn.Module):
         # if test_mode:
         #     return coords1 - coords0, flow_up
 
-        return flow_list, homo_list, residual_list
+        return flow_list, homo_list, residual_list, weight_list
 
 
 if __name__ == '__main__':
