@@ -114,7 +114,7 @@ class BottleneckBlock(nn.Module):
 
 
 class BasicEncoder(nn.Module):
-    def __init__(self, output_dim=128, norm_fn='batch', dropout=0.0):
+    def __init__(self, input_dim=3, output_dim=128, norm_fn='batch', dropout=0.0):
         super(BasicEncoder, self).__init__()
         self.norm_fn = norm_fn
 
@@ -130,7 +130,7 @@ class BasicEncoder(nn.Module):
         elif self.norm_fn == 'none':
             self.norm1 = nn.Sequential()
 
-        self.conv1 = nn.Conv2d(3, 64, kernel_size=7, stride=2, padding=3)
+        self.conv1 = nn.Conv2d(input_dim, 64, kernel_size=7, stride=2, padding=3)
         self.relu1 = nn.ReLU(inplace=True)
 
         self.in_planes = 64

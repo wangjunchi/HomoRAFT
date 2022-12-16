@@ -79,14 +79,17 @@ def corner_loss(pred_h, gt_h, four_corners, gamma=0.8):
     #
     # return loss / four_corners.shape[0]
 
-def residual_loss(residuals, gamma=0.9):
+def residual_loss(residuals, mask, gamma=0.9):
     """ loss on system residuals """
     residual_loss = 0.0
     n = len(residuals)
 
+    # downsample the mask
+    mask = nn.functional.interpolate(mask[:, None, :, :], scale_factor=1/8, mode='bilinear', align_corners=True)
     for i in range(n):
         w = gamma ** (n - i - 1)
-        residual_loss += w * residuals[i].abs().mean()
+        resd = residuals[i].permute(0, 2, 3, 1) * mask.permute(0, 2, 3, 1).repeat(1, 1, 1, 2)
+        residual_loss += w * resd.abs().mean()
 
     return residual_loss
 

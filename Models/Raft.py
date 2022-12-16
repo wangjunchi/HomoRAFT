@@ -29,8 +29,8 @@ class Model(nn.Module):
         self.args.corr_levels = 4
         self.args.corr_radius = 4
 
-        self.fnet = BasicEncoder(output_dim=256, norm_fn='instance', dropout=self.dropout)
-        self.cnet = BasicEncoder(output_dim=hdim + cdim, norm_fn='batch', dropout=self.dropout)
+        self.fnet = BasicEncoder(input_dim=3, output_dim=256, norm_fn='instance', dropout=self.dropout)
+        self.cnet = BasicEncoder(input_dim=4, output_dim=hdim + cdim, norm_fn='batch', dropout=self.dropout)
         self.update_block = BasicUpdateBlock(self.args, hidden_dim=hdim)
 
 
@@ -56,11 +56,12 @@ class Model(nn.Module):
         up_flow = up_flow.permute(0, 1, 4, 2, 5, 3)
         return up_flow.reshape(N, 2, 8 * H, 8 * W)
 
-    def forward(self, image1, image2, iters=12, test_mode=False):
+    def forward(self, image1, image2, mask, iters=12, test_mode=False):
         """ Estimate optical flow between pair of frames """
 
         image1 = image1.contiguous()
         image2 = image2.contiguous()
+        mask = mask.contiguous()
 
         hdim = self.hidden_dim
         cdim = self.context_dim
@@ -72,7 +73,8 @@ class Model(nn.Module):
 
         corr_fn = CorrBlock(fmap1, fmap2, radius=self.args.corr_radius)
 
-        cnet = self.cnet(image1)
+        cnet_input = torch.cat([image1, mask[:,None, :,:]], dim=1)
+        cnet = self.cnet(cnet_input)
         net, inp = torch.split(cnet, [hdim, cdim], dim=1)
         net = torch.tanh(net)
         inp = torch.relu(inp)
@@ -117,12 +119,16 @@ class Model(nn.Module):
             # homo_list.append(homo_guess)
 
             # apply H to coords0
-            coord0_pts = torch.flatten(coords0.detach(), start_dim=2).permute(0, 2, 1)
-            # convert to homogeneous coordinates
-            coord0_pts = torch.cat([coord0_pts, torch.ones(coord0_pts.shape[0], coord0_pts.shape[1], 1).to(coord0_pts.device)], dim=2)
-            coord1_pts = torch.bmm(H, coord0_pts.permute(0, 2, 1)).permute(0, 2, 1)
-            coord1_pts = coord1_pts[..., :2] / coord1_pts[..., 2:]
-            coords1 = coord1_pts.permute(0, 2, 1).view(coords1.shape)
+            if H is not None:
+                coord0_pts = torch.flatten(coords0.detach(), start_dim=2).permute(0, 2, 1)
+                # convert to homogeneous coordinates
+                coord0_pts = torch.cat([coord0_pts, torch.ones(coord0_pts.shape[0], coord0_pts.shape[1], 1).to(coord0_pts.device)], dim=2)
+                coord1_pts = torch.bmm(H, coord0_pts.permute(0, 2, 1)).permute(0, 2, 1)
+                coord1_pts = coord1_pts[..., :2] / coord1_pts[..., 2:]
+                coords1 = coord1_pts.permute(0, 2, 1).view(coords1.shape)
+            else:
+                print("DLT return None as Homography, use direct flow instead.")
+                coords1 = target
 
             residual = target - coords1
             residual_list.append(residual)

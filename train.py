@@ -38,10 +38,10 @@ def train_one_epoch(model, train_dataloader, optimizer, scheduler, loss_fn, cur_
         # model forward
         image_0 = image_0.cuda()
         image_1 = image_1.cuda()
-        flow_pred, homo_pred, residual = model(image_0, image_1, iters=5)
+        mask_0 = mask_0.cuda()
+        flow_pred, homo_pred, residual = model(image_0, image_1, mask_0, iters=5)
         # loss
         flow_gt = flow_gt.cuda()
-        mask_0 = mask_0.cuda()
         loss = 0.0
         loss_flow = 0.0  # only for output
         if loss_fn == 'sequence_loss':
@@ -55,7 +55,7 @@ def train_one_epoch(model, train_dataloader, optimizer, scheduler, loss_fn, cur_
             # gt_h = batch['homography'].cuda()
             # loss += corner_loss(homo_pred, gt_h, four_points, gamma=0.9) * 0.1
             # compute residual loss
-            loss += + residual_loss(residual, gamma=0.8) * 5
+            loss += residual_loss(residual, mask=mask_0, gamma=0.8) * 5
         else:
             assert False, 'loss_fn not supported'
 
@@ -64,7 +64,7 @@ def train_one_epoch(model, train_dataloader, optimizer, scheduler, loss_fn, cur_
         optimizer.zero_grad()
         loss.backward()
         # gradient clip
-        torch.nn.utils.clip_grad_norm_(model.parameters(), 2.5)
+        torch.nn.utils.clip_grad_norm_(model.parameters(), 150)
         optimizer.step()
         # log
         if step % 20 == 0:
