@@ -61,7 +61,7 @@ class _Dataset(Dataset):
         # check if the homography is valid
         H_inv = np.linalg.inv(H)
         valid_mask = compute_valid_mask(H_inv, img_size)
-        while valid_mask.sum() < 0.1 * img_size[0] * img_size[1]:
+        while valid_mask.sum() < 0.2 * img_size[0] * img_size[1]:
             # print('Invalid homography, overlap ratio: {} ,resampling...'.format(valid_mask.sum() / (img_size[0] * img_size[1])))
             H, rot_angle = sample_homography(
                 img_size, **self._config['warped_pair']['params'])

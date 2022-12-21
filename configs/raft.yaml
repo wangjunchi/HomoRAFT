@@ -2,7 +2,7 @@ data:
     name: 'coco'
     data_path: '/cluster/project/infk/cvg/students/junwang/datasets/cocos'
     seed: 42
-    batch_size: 16
+    batch_size: 8
     test_batch_size: 16
     sizes:
         train: -1
@@ -41,20 +41,23 @@ data:
         valid_border_margin: 3
 
 model:
-    pretrained_model: None
+    # pretrained_model: './log/raft-lr-1e-3-22-12-10-14_51_52/model_04_epoch.pth'
+    pretrained_model: './log/raft-lr-1e-3-22-12-10-10_05_17/model_00_epoch.pth'  # easy dataset pretrained
+    # pretrained_model:  './log/raft-lr-1e-5-22-12-15-12_17_41/model_00_epoch.pth'
 
 trainer:
     epochs: 30
     steps_per_epoch: 5000 # when batch_szie=16, it is 5174, 82784 images in total
     lr: 0.0001
-    # milestones: [40000, 90000, 110000]
-    milestones: [1100000]  # no lr decay
+    milestones: [40000, 90000, 110000]
+    # milestones: [1100000]  # no lr decay
     lr_decay: 0.1
     save_period: 1
+    loss: 'combined_loss'
 
 
 logging:
-    dir: 'log/raft-lr-1e-3'
+    dir: './log/raft-lr-1e-4_hard_no_mask'
     step: 100
 
 

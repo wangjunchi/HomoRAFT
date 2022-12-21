@@ -36,12 +36,16 @@ def compute_homography(flow_pred, mask):
         mask_i = mask[i].reshape(-1).cpu().detach().numpy()
         src_pts = coordinate_field[i][mask_i == 1]
         dst_pts = mapping_field[i][mask_i == 1]
+        h = np.eye(3)
         try:
             h = cv2.findHomography(np.float32(src_pts), np.float32(dst_pts), cv2.RANSAC, 10)[0]
         except Exception:
             print("valid points in mask = ", mask_i.sum())
             traceback.print_exc()
             print("using identity matrix instead")
+            h = np.eye(3)
+        if h is None:
+            print("opencv returns None as honography, using identity matrix instead")
             h = np.eye(3)
         predicted_h.append(h)
 
@@ -55,9 +59,15 @@ def compute_mace(pred_h, gt_h, four_points):
     mace = []
     gt_h = gt_h.cpu().detach().numpy()
     for i in range(gt_h.shape[0]):
-        delta_gt = cv2.perspectiveTransform(np.asarray([four_points]), gt_h[i]).squeeze() - four_points
-        delta_pred = cv2.perspectiveTransform(np.asarray([four_points]), pred_h[i]).squeeze() - four_points
-        mace.append(np.mean(np.abs(delta_gt - delta_pred)))
+        try:
+            delta_gt = cv2.perspectiveTransform(np.asarray([four_points]), gt_h[i]).squeeze() - four_points
+            delta_pred = cv2.perspectiveTransform(np.asarray([four_points]), pred_h[i]).squeeze() - four_points
+            mace.append(np.mean(np.abs(delta_gt - delta_pred)))
+        except:
+            print("Error when compiting mace")
+            print('homography: ', pred_h[i])
+            traceback.print_exc()
+            exit()
 
     return np.mean(mace)
 

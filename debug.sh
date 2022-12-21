@@ -1,0 +1,1 @@
+srun -n 1 --cpus-per-task=16 --gpus=1 --time=4:00:00 --mem-per-cpu=1024 --pty bash
