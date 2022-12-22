@@ -28,8 +28,8 @@ class Model(nn.Module):
         self.args.corr_levels = 4
         self.args.corr_radius = 4
 
-        self.fnet = BasicEncoder(output_dim=256, norm_fn='instance', dropout=self.dropout)
-        self.cnet = BasicEncoder(output_dim=hdim + cdim, norm_fn='batch', dropout=self.dropout)
+        self.fnet = BasicEncoder(input_dim=3, output_dim=256, norm_fn='instance', dropout=self.dropout)
+        self.cnet = BasicEncoder(input_dim=3, output_dim=hdim + cdim, norm_fn='batch', dropout=self.dropout)
         self.update_block = BasicUpdateBlock(self.args, hidden_dim=hdim)
 
 
@@ -55,7 +55,7 @@ class Model(nn.Module):
         up_flow = up_flow.permute(0, 1, 4, 2, 5, 3)
         return up_flow.reshape(N, 2, 8 * H, 8 * W)
 
-    def forward(self, image1, image2, iters=12, test_mode=False):
+    def forward(self, image1, image2, mask=None, iters=12, test_mode=False):
         """ Estimate optical flow between pair of frames """
 
         image1 = image1.contiguous()
@@ -71,6 +71,13 @@ class Model(nn.Module):
 
         corr_fn = CorrBlock(fmap1, fmap2, radius=self.args.corr_radius)
 
+        if mask is None:
+            mask = torch.ones_like(image1[:, 0:1, :, :])
+        else:
+            mask = mask[:,None, :,:]
+        mask = mask.float().contiguous()
+        # cnet_input = torch.cat([image1, mask], dim=1)
+        # cnet = self.cnet(cnet_input)
         cnet = self.cnet(image1)
         net, inp = torch.split(cnet, [hdim, cdim], dim=1)
         net = torch.tanh(net)
