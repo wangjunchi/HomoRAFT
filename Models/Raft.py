@@ -30,7 +30,7 @@ class Model(nn.Module):
         self.args.corr_radius = 4
 
         self.fnet = BasicEncoder(input_dim=3, output_dim=256, norm_fn='instance', dropout=self.dropout)
-        self.cnet = BasicEncoder(input_dim=4, output_dim=hdim + cdim, norm_fn='batch', dropout=self.dropout)
+        self.cnet = BasicEncoder(input_dim=3, output_dim=hdim + cdim, norm_fn='batch', dropout=self.dropout)
         self.update_block = BasicUpdateBlock(self.args, hidden_dim=hdim)
 
 
@@ -61,7 +61,7 @@ class Model(nn.Module):
 
         image1 = image1.contiguous()
         image2 = image2.contiguous()
-        mask = mask.contiguous()
+        # mask = mask.contiguous()
 
         hdim = self.hidden_dim
         cdim = self.context_dim
@@ -73,8 +73,8 @@ class Model(nn.Module):
 
         corr_fn = CorrBlock(fmap1, fmap2, radius=self.args.corr_radius)
 
-        cnet_input = torch.cat([image1, mask[:,None, :,:]], dim=1)
-        cnet = self.cnet(cnet_input)
+        # cnet_input = torch.cat([image1, mask[:,None, :,:]], dim=1)
+        cnet = self.cnet(image1)
         net, inp = torch.split(cnet, [hdim, cdim], dim=1)
         net = torch.tanh(net)
         inp = torch.relu(inp)
@@ -84,6 +84,7 @@ class Model(nn.Module):
         flow_list = []
         homo_list = []
         residual_list = []
+        weight_list = []
         homo_guess = torch.eye(3).unsqueeze(0).repeat(coords1.shape[0], 1, 1).to(coords1.device)
         for itr in range(iters):
             coords1 = coords1.detach()
@@ -140,10 +141,12 @@ class Model(nn.Module):
                 flow_up = self.upsample_flow(coords1 - coords0, up_mask)
 
             flow_list.append(flow_up)
+            homo_list.append(H)
+            weight_list.append(weights.view((1,30, 40)))
         # if test_mode:
         #     return coords1 - coords0, flow_up
 
-        return flow_list, homo_list, residual_list
+        return flow_list, homo_list, residual_list, weight_list
 
 
 if __name__ == '__main__':

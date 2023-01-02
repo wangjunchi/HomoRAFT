@@ -124,9 +124,9 @@ class HypersimPlaneDataset(Dataset):
         homography_new = np.matmul(t2, np.matmul(homography, np.linalg.inv(t1)))
 
         # use Dilation to enlarge the mask
-        kernel = np.ones((3, 3), np.uint8)
-        segment_1 = cv2.dilate(segment_1, kernel, iterations=10)
-        segment_2 = cv2.dilate(segment_2, kernel, iterations=10)
+        kernel = np.ones((10, 10), np.uint8)
+        segment_1 = cv2.dilate(segment_1, kernel, iterations=3)
+        segment_2 = cv2.dilate(segment_2, kernel, iterations=3)
 
         # generate matching
         gt_flow, mask = self.generate_gt_match(image_1_patch, homography_new)
@@ -135,12 +135,34 @@ class HypersimPlaneDataset(Dataset):
         # image_1_patch = torch.from_numpy(image_1_patch).permute(2, 0, 1).float()
         # image_2_patch = torch.from_numpy(image_2_patch).permute(2, 0, 1).float()
 
-        return {'patch_1': image_1_patch,
-                'patch_2': image_2_patch,
-                'gt_flow': gt_flow,
-                'gt_homography': homography_new,
-                'mask_1': segment_1,
-                'mask_2': segment_2, }
+        # check if the sample is valid
+        # check homography is valid
+        if (np.linalg.matrix_rank(homography_new) != 3):
+            return None
+        # check overlap is enough
+        if (torch.sum(mask) < 0.1 * mask.shape[0] * mask.shape[1]):
+            return None
+
+        # convert to tensor
+        image_1_patch = torch.from_numpy(image_1_patch).permute(2, 0, 1).float()
+        image_2_patch = torch.from_numpy(image_2_patch).permute(2, 0, 1).float()
+        image_1_patch = image_1_patch / 255.0
+        image_2_patch = image_2_patch / 255.0
+        segment_1 = torch.from_numpy(segment_1).float()
+        segment_2 = torch.from_numpy(segment_2).float()
+        gt_flow = gt_flow.permute(2, 0, 1).float()
+        mask = mask.float()
+        homography_new = torch.from_numpy(homography_new).float()
+
+
+        return {'image0': image_1_patch,
+                'image1': image_2_patch,
+                'flow': gt_flow,
+                'homography': homography_new,
+                'seg0': segment_1,
+                'seg1': segment_2,
+                'valid_mask0': mask
+                }
 
 
 
@@ -174,8 +196,6 @@ class HypersimPlaneDataset(Dataset):
 
     def generate_gt_match(self, patch_1, H):
         h, w, _ = patch_1.shape
-        # inverse homography matrix
-        H_inv = np.linalg.inv(H)
 
         # estimate the grid
         X, Y = np.meshgrid(np.linspace(0, w - 1, w),
@@ -197,79 +217,21 @@ class HypersimPlaneDataset(Dataset):
         #     (2 * XwarpHom / (ZwarpHom + 1e-8) / (w_scale - 1) - 1)
         # Ywarp = \
         #     (2 * YwarpHom / (ZwarpHom + 1e-8) / (h_scale - 1) - 1)
-        Xwarp = (XwarpHom / (ZwarpHom + 1e-8)) - X
-        Ywarp = (YwarpHom / (ZwarpHom + 1e-8)) - Y
+        Xwarp = (XwarpHom / (ZwarpHom + 1e-8))
+        Ywarp = (YwarpHom / (ZwarpHom + 1e-8))
         # and now the grid
-        gt_flow = torch.stack([Xwarp.view(h, w),
+        gt_match = torch.stack([Xwarp.view(h, w),
                                Ywarp.view(h, w)], dim=-1)
 
         # mask
-        mask = gt_flow.ge(0) & gt_flow.le(w)
-        mask = mask[:, :, 0] & mask[:, :, 1]
+        # mask = gt_match.ge(0) & gt_match.le(w)
+        mask_x = gt_match[:, :, 0].ge(0) & gt_match[:, :, 0].le(w)
+        mask_y = gt_match[:, :, 1].ge(0) & gt_match[:, :, 1].le(h)
+        mask = mask_y & mask_x
+
+        X_flow = (XwarpHom / (ZwarpHom + 1e-8)) - X
+        Y_flow = (YwarpHom / (ZwarpHom + 1e-8)) - Y
+        gt_flow = torch.stack([X_flow.view(h, w),
+                                Y_flow.view(h, w)], dim=-1)
 
         return gt_flow, mask
-
-
-
-if __name__ == "__main__":
-    scene_list = ['ai_001_010']
-    dataset = HypersimPlaneDataset("/home/junchi/sp1/dataset/hypersim", scene_list)
-    print(len(dataset))
-
-    for i in range(10):
-        # image_1, image_2, homography, image_patch_1, image_patch_2, new_homography, gt_match, mask = dataset[i]
-        sample = dataset[i]
-        image_patch_1 = sample['patch_1']
-        image_patch_2 = sample['patch_2']
-        new_homography = sample['gt_homography']
-        gt_flow = sample['gt_flow']
-        mask_1 = sample['mask_1']
-        mask_2 = sample['mask_2']
-
-        image_patch_1 = image_patch_1 * mask_1[:, :, np.newaxis]
-        image_patch_2 = image_patch_2 * mask_2[:, :, np.newaxis]
-        # print(image_1.shape, image_2.shape, homography)
-        # visulize using plt
-        # plt.subplot(1, 2, 1)
-        # plt.imshow(image_1.astype('uint8'))
-        # plt.subplot(1, 2, 2)
-        # plt.imshow(image_2.astype('uint8'))
-        # plt.title("Original plane patch")
-        # plt.show()
-
-        # # warp image_2 to image_1
-        # image_1_warped = cv2.warpPerspective(image_1, homography, (image_1.shape[1], image_1.shape[0]))
-        # plt.subplot(1, 2, 1)
-        # plt.imshow(image_2.astype('uint8'))
-        # plt.subplot(1, 2, 2)
-        # plt.imshow(image_1_warped.astype('uint8'))
-        # plt.title("Warped plane patch")
-        # plt.show()
-
-        image_1_patch_warped = cv2.warpPerspective(image_patch_1, new_homography, (image_patch_1.shape[1], image_patch_1.shape[0]))
-        plt.subplot(1, 3, 1)
-        plt.title("Plane patch 1")
-        plt.imshow(image_patch_1.astype('uint8'))
-        plt.subplot(1, 3, 2)
-        plt.title("Plane patch 2")
-        plt.imshow(image_patch_2.astype('uint8'))
-        plt.subplot(1, 3, 3)
-        plt.imshow(image_1_patch_warped.astype('uint8'))
-        plt.title("Warped plane patch 1")
-        plt.show()
-        pass
-
-        # # compute homography from gt matches
-        # h, w = image_patch_1.shape[:2]
-        # X, Y = np.meshgrid(np.linspace(0, w - 1, w),
-        #                    np.linspace(0, h - 1, h))
-        # X, Y = X.flatten(), Y.flatten()
-        #
-        # # create matrix representation
-        # origin_coordinate = np.stack([X, Y], axis=1)
-        # target_coordinate = gt_match.cpu().numpy().reshape(-1, 2)
-        # origin_coordinate = origin_coordinate[mask.cpu().numpy().reshape(-1)]
-        # target_coordinate = target_coordinate[mask.cpu().numpy().reshape(-1)]
-        # homography_gt, _ = cv2.findHomography(origin_coordinate, target_coordinate, cv2.RANSAC, 1.0)
-        # print(homography_gt)
-        pass

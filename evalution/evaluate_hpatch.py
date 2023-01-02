@@ -14,7 +14,7 @@ from Utils.metrics import compute_mace, compute_homography
 
 
 
-def main():
+def main(iterations = 10):
 
     # Argument parsing
     parser = argparse.ArgumentParser(description='Raft evaluation on HPatches')
@@ -58,6 +58,7 @@ def main():
         number_of_scenes = 5
         res = []
         res_2x = []
+        res_thres =[[] for i in range(10)]
         # loop over scenes (1-2, 1-3, 1-4, 1-5, 1-6)
         for id, k in enumerate(range(2, number_of_scenes + 2)):
             test_dataset = \
@@ -76,6 +77,8 @@ def main():
             correct = 0
             correct_2x = 0
             epes = []
+            corret_thres = [0 for i in range(10)]
+            iteration = iterations
             for _, mini_batch in pbar:
                 # get data
                 img1 = mini_batch['patch_1'].to(device)
@@ -85,7 +88,7 @@ def main():
 
 
                 # compute flow
-                flow_pred12, homo_pred, residual, weight = model(img1, img2, mask_0, iters=20)
+                flow_pred12, homo_pred, residual, weight = model(img1, img2, mask_0, iters=iteration)
                 final_flow12 = flow_pred12[-1]
 
                 h_pred12 = compute_homography(final_flow12)
@@ -111,7 +114,7 @@ def main():
                 image = np.concatenate((image_1, image_2), axis=1)
 
 
-                flow_pred21, homo_pred, residual, weight = model(img2, img1, mask_1, iters=20)
+                flow_pred21, homo_pred, residual, weight = model(img2, img1, mask_1, iters=iteration)
                 final_flow21 = flow_pred21[-1]
                 h_pred21 = compute_homography(final_flow21)
                 h_pred12_2 = np.linalg.inv(h_pred21)
@@ -140,8 +143,12 @@ def main():
                     delta = four_points - rewarp
                     error = np.linalg.norm(delta, axis=1)
                     error = np.mean(error)
-                    if error <= 10:
+                    if error <= 3:
                         correct += 1
+
+                    for i in range(10):
+                        if error <= i+1:
+                            corret_thres[i] += 1
 
                     # # evaluate at 2x scale
                     # S = np.array([2, 0, 0, 0, 2, 0, 0, 0, 1]).reshape(3, 3)
@@ -194,11 +201,21 @@ def main():
             res.append(correct / len(test_dataloader))
             res_2x.append(correct_2x / len(test_dataloader))
 
+            for i in range(10):
+                res_thres[i].append(corret_thres[i] / len(test_dataloader))
+
 
 
         print(res)
         print('Average accuracy: {}'.format(np.mean(res)))
         # print('Average accuracy at 2x scale: {}'.format(np.mean(res_2x)))
 
+        for i in range(10):
+            print('Average accuracy at {} pixel: {}'.format(i+1, np.mean(res_thres[i])))
+
 if __name__ == '__main__':
-    main()
+    test_iterations = [1,3,5,8,10,12,14,16,20]
+    for i in test_iterations:
+        print('Test iteration {}'.format(i))
+        main(i)
+        print('---------------------')

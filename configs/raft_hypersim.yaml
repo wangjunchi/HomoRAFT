@@ -1,0 +1,25 @@
+data:
+    dir: '/home/junchi/sp1/dataset/hypersim'
+    image_size: (240, 320)
+    batch_size: 1
+
+
+model:
+    pretrained_model: './model_29_epoch_no_mask.pth'
+
+trainer:
+    epochs: 25
+    steps_per_epoch: 3600 # when batch_szie=64, it is 3600, 230400 images in total
+    lr: 0.00001
+    milestones: [30000, 60000, 90000]
+    lr_decay: 0.1
+    save_period: 1
+    loss: 'combined_loss'
+
+
+logging:
+    dir: 'log/raft-lr-1e-4'
+    step: 100
+
+
+

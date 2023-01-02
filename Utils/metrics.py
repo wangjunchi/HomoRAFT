@@ -24,7 +24,7 @@ def _postprocess(perspective_field):
     return coordinate_field, mapping_field
 
 
-def compute_homography(flow_pred, mask):
+def compute_homography(flow_pred, mask=None):
 
     coordinate_field, mapping_field = _postprocess(flow_pred)
     # Find best homography fit and its delta
@@ -32,11 +32,15 @@ def compute_homography(flow_pred, mask):
     predicted_delta = []
 
     for i in range(flow_pred.shape[0]):
-        mask_i = mask[i].reshape(-1).cpu().detach().numpy()
-        src_pts = coordinate_field[i][mask_i == 1]
-        dst_pts = mapping_field[i][mask_i == 1]
+        if mask is not None:
+            mask_i = mask[i].reshape(-1).cpu().detach().numpy()
+            src_pts = coordinate_field[i][mask_i == 1]
+            dst_pts = mapping_field[i][mask_i == 1]
+        else:
+            src_pts = coordinate_field[i]
+            dst_pts = mapping_field[i]
         try:
-            h = cv2.findHomography(np.float32(src_pts), np.float32(dst_pts), cv2.RANSAC, 10)[0]
+            h = cv2.findHomography(np.float32(src_pts), np.float32(dst_pts), cv2.RANSAC, 1)[0]
         except Exception:
             h = np.eye(3)
             print('Warning: Homography not found')
