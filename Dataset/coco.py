@@ -28,7 +28,7 @@ class Coco(BaseDataset):
         val_dir = Path(root_dir, 'val2017')
         val_images = list(val_dir.iterdir())
         self._paths['val'] = [str(p)
-                              for p in val_images[:config['sizes']['val']]]
+                              for p in val_images[:]]
 
         # Test split
         self._paths['test'] = [str(p)
@@ -160,10 +160,8 @@ if __name__ == '__main__':
                             shuffle=False,
                             num_workers=0)
     print("total number of images: ", len(dataset.get_dataset('val')))
-    for epoch in range(5):
+    for epoch in range(1):
         for step, batch in enumerate(dataloader):
-            if step == 3:
-                break
             # print(batch['image0'].shape)
             # print(batch['image1'].shape)
             # print(batch['homography'].shape)
@@ -174,19 +172,24 @@ if __name__ == '__main__':
             # plt.show()
             # plt.imshow(batch['image1'][0].permute(1, 2, 0).numpy())
             # plt.show()
-            plt.imshow(batch['valid_mask0'][0].numpy())
-            plt.show()
+            # plt.imshow(batch['valid_mask0'][0].numpy())
+            # plt.show()
             # plt.imshow(batch['valid_mask1'][0].numpy())
             # plt.show()
             #
             # draw matching
-            plt.figure(dpi=300)
+            # plt.figure(dpi=300)
             image0 = batch['image0'][0].permute(1, 2, 0).numpy()
             image1 = batch['image1'][0].permute(1, 2, 0).numpy()
             matching = batch['matching'][0].numpy()
             mask = batch['valid_mask0'][0].numpy()
-            img_match = draw_matching(image0, image1, matching, mask)
-            plt.imshow(img_match)
-            plt.show()
+            # img_match = draw_matching(image0, image1, matching, mask)
+            # plt.imshow(img_match)
+            # combine image0 and image1
+            img_combine = np.concatenate([image0, image1], axis=1)
+            img_combine = (img_combine * 255).astype(np.uint8)
+
+            # plt.imshow(img_combine)
+            # plt.show()
             pass
 
