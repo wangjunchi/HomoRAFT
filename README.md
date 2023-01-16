@@ -23,7 +23,7 @@ python train.py --config_file configs/raft-easy.yaml
 To evaluate the model, first download the [HPatch](https://github.com/hpatches/hpatches-dataset), then run the following command:
 
 ```bash
-python evaluation/evaluate_hpatch.py --image-data-path <path-to-hpatch> --model-path <path-to-model>
+python evaluation/evaluate_hpatch.py --image-data-path <path-to-hpatch> --ckpt <path-to-model>
 ```
 
 Weight can be downloaded from [here](https://drive.google.com/drive/folders/1A1cwiukoyBZQyctbW2jhPg87aBRVNFvW?usp=share_link)
