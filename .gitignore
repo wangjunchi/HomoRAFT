@@ -1,4 +1,6 @@
 log/
 .idea/
-*.pyh
-*.pth
+lsf.*
+.vs
+*.pyc
+*.out

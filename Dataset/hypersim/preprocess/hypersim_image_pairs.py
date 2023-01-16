@@ -24,11 +24,12 @@ class HypersimPairDataset(Dataset):
         self.q_list = pd.read_csv(q_path)
 
         self.image_path = "{}/images/scene_{}_final_preview/frame.{}.tonemap.jpg"
-        self.planes_path = "{}/images/scene_{}_geometry_hdf5/frame.{}.planes.hdf5"
+        self.planes_path = "{}/images/scene_{}_geometry_hdf5/frame.{}.planes_hires.hdf5"
         self.normal_path = "{}/images/scene_{}_geometry_hdf5/frame.{}.normal_cam.hdf5"
         self.depth_path = "{}/images/scene_{}_geometry_hdf5/frame.{}.depth_meters.hdf5"
         self.camera_position_path = "{}/_detail/{}/camera_keyframe_positions.hdf5"
         self.camera_orientation_path = "{}/_detail/{}/camera_keyframe_orientations.hdf5"
+        self.unit_path_t = "{}/_detail/metadata_scene.csv"
 
     def __len__(self):
         return len(self.p_list)
@@ -169,7 +170,9 @@ class HypersimPairDataset(Dataset):
         r = camera_orientation[frame_id]
         t = camera_position[frame_id]
         # t[1] =2.0
-        unit = 0.0254
+        # unit = 0.0254
+        unit_file = os.path.join(self.data_dir, self.unit_path_t.format(scene_name))
+        unit = pd.read_csv(unit_file).to_numpy()[0][1]
         t = t * unit
         h = np.concatenate([r, t.reshape(3, 1)], axis=1)
         h = np.concatenate([h, np.array([[0, 0, 0, 1.]])], axis=0)

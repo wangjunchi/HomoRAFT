@@ -21,11 +21,11 @@ class Coco(BaseDataset):
         self._paths = {}
 
         # Train split
-        train_dir = Path(root_dir, 'train2017')
+        train_dir = Path(root_dir, 'train2014')
         self._paths['train'] = [str(p) for p in list(train_dir.iterdir())]
 
         # Val split
-        val_dir = Path(root_dir, 'val2017')
+        val_dir = Path(root_dir, 'val2014')
         val_images = list(val_dir.iterdir())
         self._paths['val'] = [str(p)
                               for p in val_images[:]]
@@ -57,6 +57,20 @@ class _Dataset(Dataset):
 
         H, rot_angle = sample_homography(
             img_size, **self._config['warped_pair']['params'])
+
+        # check if the homography is valid
+        H_inv = np.linalg.inv(H)
+        valid_mask = compute_valid_mask(H_inv, img_size)
+        while valid_mask.sum() < 0.2 * img_size[0] * img_size[1]:
+            # print('Invalid homography, overlap ratio: {} ,resampling...'.format(valid_mask.sum() / (img_size[0] * img_size[1])))
+            H, rot_angle = sample_homography(
+                img_size, **self._config['warped_pair']['params'])
+            H_inv = np.linalg.inv(H)
+            rot_angle = np.clip(np.abs(rot_angle) / self._angle_lim, 0., 1.)
+            valid_mask = compute_valid_mask(H_inv, img_size)
+        # print('Valid homography, overlap ratio: {:.2f}'.format(valid_mask.sum() / (img_size[0] * img_size[1])))
+
+
         rot_angle = np.clip(np.abs(rot_angle) / self._angle_lim, 0., 1.)
 
         # check if the homography is valid

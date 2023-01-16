@@ -11,7 +11,7 @@ from matplotlib import pyplot as plt
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 import open3d as o3d
-from Dataset.hypersim.preprocess.hypersim_image_pairs import HypersimPairDataset
+from hypersim_image_pairs import HypersimPairDataset
 import pandas as pd
 
 
@@ -20,15 +20,15 @@ def main(scene_list):
         process_scene(scene)
 
 def process_scene(scene_name):
-    dataset = HypersimPairDataset(data_dir="/home/junchi/sp1/dataset/hypersim", scene_name=scene_name)
+    dataset = HypersimPairDataset(data_dir="/cluster/project/infk/cvg/students/junwang/hypersim", scene_name=scene_name)
     # dataloader = DataLoader(dataset, batch_size=1, shuffle=False, num_workers=0)
     # scene_name = dataset.scene_name
 
-    # csv_path = "/home/junchi/sp1/dataset/hypersim_planes/{}/homography.csv".format(scene_name)
-    csv_path = os.path.join(root_dir, "{}/homography.csv".format(scene_name))
+    csv_path = "/cluster/project/infk/cvg/students/junwang/hypersim/{}/homography.csv".format(scene_name)
     df = pd.DataFrame(columns=['scene_name', 'camera_id_1', 'frame_id_1', 'plane_id_1',
                                'camera_id_2', 'frame_id_2', 'plane_id_2',
                                 'homography'])
+    print("Processing scene {}".format(scene_name))
     for i, sample_pair in tqdm(enumerate(dataset)):
         # debug
         # if i > 5:
@@ -182,8 +182,8 @@ def process_scene(scene_name):
 
 if __name__ == "__main__":
     # scene_list = ['ai_001_001', 'ai_001_002', 'ai_001_010']
-    root_dir = "/home/junchi/sp1/dataset/hypersim"
-    test_list_path = os.path.join(root_dir, "test_scenes.txt")
+    root_dir = "/cluster/project/infk/cvg/students/junwang/hypersimLite"
+    test_list_path = os.path.join(root_dir, "train_scenes.txt")
     with open(test_list_path, "r") as f:
         test_scene = f.read().splitlines()
     print(test_scene)

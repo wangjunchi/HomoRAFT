@@ -25,7 +25,7 @@ class HypersimPlaneDataset(Dataset):
         # self.seg_path = "{}/{}/{}/plane_seg.npy"
 
         self.image_path = "{}/images/scene_{}_final_preview/frame.{}.tonemap.jpg"
-        self.seg_path = "{}/images/scene_{}_geometry_hdf5/frame.{}.planes.hdf5"
+        self.seg_path = "{}/images/scene_{}_geometry_hdf5/frame.{}.planes_hires.hdf5"
 
     # def get_dirs(self):
     #     dirs = []

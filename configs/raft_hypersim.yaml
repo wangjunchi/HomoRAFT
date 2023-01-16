@@ -1,16 +1,17 @@
 data:
-    dir: '/home/junchi/sp1/dataset/hypersim'
-    image_size: (240, 320)
-    batch_size: 1
+    seed: 42
+    dir: '/cluster/project/infk/cvg/students/junwang/hypersim'
+    image_size: (320, 240)
+    batch_size: 8
 
 
 model:
-    pretrained_model: './model_29_epoch_no_mask.pth'
+    pretrained_model: '/cluster/project/infk/cvg/students/junwang/HomoRAFT/log/raft-lr-1e-4_hard_no_mask/model_29_epoch.pth'
 
 trainer:
     epochs: 25
-    steps_per_epoch: 3600 # when batch_szie=64, it is 3600, 230400 images in total
-    lr: 0.00001
+    steps_per_epoch: 2500 # infinite
+    lr: 0.0001
     milestones: [30000, 60000, 90000]
     lr_decay: 0.1
     save_period: 1
@@ -18,7 +19,7 @@ trainer:
 
 
 logging:
-    dir: 'log/raft-lr-1e-4'
+    dir: 'log/hypersim-raft-lr-1e-4'
     step: 100
 
 

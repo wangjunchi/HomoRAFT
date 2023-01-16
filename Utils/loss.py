@@ -18,6 +18,7 @@ def sequence_loss(pf_preds, pf_gt, mask=None, gamma=0.8):
         i_loss = i_loss.mean()
         seq_loss += i_weight * i_loss
 
+    # seq_loss = torch.clamp(seq_loss, max=100)
     return seq_loss
 
 
@@ -84,12 +85,13 @@ def residual_loss(residuals, mask, gamma=0.9):
     residual_loss = 0.0
     n = len(residuals)
 
-    # downsample the mask
     mask = nn.functional.interpolate(mask[:, None, :, :], scale_factor=1/8, mode='bilinear', align_corners=True)
     for i in range(n):
         w = gamma ** (n - i - 1)
         resd = residuals[i].permute(0, 2, 3, 1) * mask.permute(0, 2, 3, 1).repeat(1, 1, 1, 2)
         residual_loss += w * resd.abs().mean()
+
+    # residual_loss = torch.clamp(residual_loss, max=10)
 
     return residual_loss
 

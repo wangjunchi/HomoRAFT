@@ -1,6 +1,7 @@
 import torch
 import numpy as np
 import cv2
+import traceback
 
 
 def _postprocess(perspective_field):
@@ -39,12 +40,17 @@ def compute_homography(flow_pred, mask=None):
         else:
             src_pts = coordinate_field[i]
             dst_pts = mapping_field[i]
+        h = np.eye(3)
         try:
             h = cv2.findHomography(np.float32(src_pts), np.float32(dst_pts), cv2.RANSAC, 1)[0]
         except Exception:
+            print("valid points in mask = ", mask_i.sum())
+            traceback.print_exc()
+            print("using identity matrix instead")
             h = np.eye(3)
-            print('Warning: Homography not found')
-            print("number of valid points: ", mask_i.sum())
+        if h is None:
+            print("opencv returns None as honography, using identity matrix instead")
+            h = np.eye(3)
         predicted_h.append(h)
 
     predicted_h = np.array(predicted_h)
@@ -56,12 +62,16 @@ def compute_mace(pred_h, gt_h, four_points):
     # Compute MACE
     mace = []
     gt_h = gt_h.cpu().detach().numpy()
-    if type(pred_h) == torch.Tensor:
-        pred_h = pred_h.cpu().detach().numpy()
     for i in range(gt_h.shape[0]):
-        delta_gt = cv2.perspectiveTransform(np.asarray([four_points]), gt_h[i]).squeeze() - four_points
-        delta_pred = cv2.perspectiveTransform(np.asarray([four_points]), pred_h[i]).squeeze() - four_points
-        mace.append(np.mean(np.abs(delta_gt - delta_pred)))
+        try:
+            delta_gt = cv2.perspectiveTransform(np.asarray([four_points]), gt_h[i]).squeeze() - four_points
+            delta_pred = cv2.perspectiveTransform(np.asarray([four_points]), pred_h[i]).squeeze() - four_points
+            mace.append(np.mean(np.abs(delta_gt - delta_pred)))
+        except:
+            print("Error when compiting mace")
+            print('homography: ', pred_h[i])
+            traceback.print_exc()
+            exit()
 
     return np.mean(mace)
 

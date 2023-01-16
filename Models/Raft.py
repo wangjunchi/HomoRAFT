@@ -3,13 +3,12 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from Models.raft_block.update import BasicUpdateBlock, UpdateModule
+from Models.raft_block.update import BasicUpdateBlock
 from Models.raft_block.extractor import BasicEncoder
 from Models.raft_block.corr import CorrBlock
 from Models.raft_block.utils import bilinear_sampler, coords_grid, upflow8
-from Models.raft_block.ba_svd import compute_h_dlt
+from Models.raft_block.ba_dlt import compute_h_dlt
 from Models.raft_block.flow_viz import flow_to_image
-from Models.raft_block.ba import BA_Homography
 from easydict import EasyDict as edict
 
 
@@ -56,7 +55,7 @@ class Model(nn.Module):
         up_flow = up_flow.permute(0, 1, 4, 2, 5, 3)
         return up_flow.reshape(N, 2, 8 * H, 8 * W)
 
-    def forward(self, image1, image2, mask, iters=12, test_mode=False):
+    def forward(self, image1, image2, mask=None, iters=12, test_mode=False):
         """ Estimate optical flow between pair of frames """
 
         image1 = image1.contiguous()
@@ -74,6 +73,7 @@ class Model(nn.Module):
         corr_fn = CorrBlock(fmap1, fmap2, radius=self.args.corr_radius)
 
         # cnet_input = torch.cat([image1, mask[:,None, :,:]], dim=1)
+        # cnet = self.cnet(cnet_input)
         cnet = self.cnet(image1)
         net, inp = torch.split(cnet, [hdim, cdim], dim=1)
         net = torch.tanh(net)
@@ -84,19 +84,19 @@ class Model(nn.Module):
         flow_list = []
         homo_list = []
         residual_list = []
-        weight_list = []
-        homo_guess = torch.eye(3).unsqueeze(0).repeat(coords1.shape[0], 1, 1).to(coords1.device)
+        # homo_guess = torch.eye(3).unsqueeze(0).repeat(coords1.shape[0], 1, 1).to(coords1.device)
         for itr in range(iters):
+            torch.cuda.empty_cache()
             coords1 = coords1.detach()
-            homo_guess = homo_guess.detach()
-            homo_guess = torch.flatten(homo_guess, start_dim=1)[..., :8]
+            # homo_guess = homo_guess.detach()
+            # homo_guess = torch.flatten(homo_guess, start_dim=1)[..., :8]
             target = target.detach()
 
             corr = corr_fn(coords1)  # index correlation volume
             resd = target - coords1
             flow = coords1 - coords0
 
-            motion = torch.cat([flow, resd], dim=1).clamp(-64.0, 64.0)
+            motion = torch.cat([flow, resd], dim=1)
             # motion = flow
 
             net, up_mask, delta_flow, weights = self.update_block(net, inp, corr, motion)
@@ -128,7 +128,7 @@ class Model(nn.Module):
                 coord1_pts = coord1_pts[..., :2] / coord1_pts[..., 2:]
                 coords1 = coord1_pts.permute(0, 2, 1).view(coords1.shape)
             else:
-                print("DLT return None as Homography, use direct flow instead.")
+                print("DLT return None as Homography, use directly flow instead.")
                 coords1 = target
 
             residual = target - coords1
@@ -141,12 +141,10 @@ class Model(nn.Module):
                 flow_up = self.upsample_flow(coords1 - coords0, up_mask)
 
             flow_list.append(flow_up)
-            homo_list.append(H)
-            weight_list.append(weights.view((1,30, 40)))
         # if test_mode:
         #     return coords1 - coords0, flow_up
 
-        return flow_list, homo_list, residual_list, weight_list
+        return flow_list, homo_list, residual_list
 
 
 if __name__ == '__main__':
