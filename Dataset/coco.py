@@ -21,11 +21,11 @@ class Coco(BaseDataset):
         self._paths = {}
 
         # Train split
-        train_dir = Path(root_dir, 'train2014')
+        train_dir = Path(root_dir, 'train2017')
         self._paths['train'] = [str(p) for p in list(train_dir.iterdir())]
 
         # Val split
-        val_dir = Path(root_dir, 'val2014')
+        val_dir = Path(root_dir, 'val2017')
         val_images = list(val_dir.iterdir())
         self._paths['val'] = [str(p)
                               for p in val_images[:]]

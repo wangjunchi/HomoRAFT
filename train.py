@@ -66,7 +66,7 @@ def train_one_epoch(model, train_dataloader, optimizer, scheduler, loss_fn, cur_
         else:
             assert False, 'loss_fn not supported'
 
-        if torch.isnan(loss) or loss > 100:
+        if torch.isnan(loss) or loss > 200:
             # skip nan loss
             print("skip large or nan loss")
             continue
