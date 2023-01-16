@@ -31,14 +31,20 @@ def compute_homography(flow_pred, mask=None):
     predicted_h = []
     predicted_delta = []
 
-    if mask is None:
-        mask = torch.ones(flow_pred.shape[0], flow_pred.shape[-2], flow_pred.shape[-1]).cuda()
-
     for i in range(flow_pred.shape[0]):
-        mask_i = mask[i].reshape(-1).cpu().detach().numpy()
-        src_pts = coordinate_field[i][mask_i == 1]
-        dst_pts = mapping_field[i][mask_i == 1]
-        h = cv2.findHomography(np.float32(src_pts), np.float32(dst_pts), cv2.RANSAC, 1)[0]
+        if mask is not None:
+            mask_i = mask[i].reshape(-1).cpu().detach().numpy()
+            src_pts = coordinate_field[i][mask_i == 1]
+            dst_pts = mapping_field[i][mask_i == 1]
+        else:
+            src_pts = coordinate_field[i]
+            dst_pts = mapping_field[i]
+        try:
+            h = cv2.findHomography(np.float32(src_pts), np.float32(dst_pts), cv2.RANSAC, 1)[0]
+        except Exception:
+            h = np.eye(3)
+            print('Warning: Homography not found')
+            print("number of valid points: ", mask_i.sum())
         predicted_h.append(h)
 
     predicted_h = np.array(predicted_h)
@@ -50,6 +56,8 @@ def compute_mace(pred_h, gt_h, four_points):
     # Compute MACE
     mace = []
     gt_h = gt_h.cpu().detach().numpy()
+    if type(pred_h) == torch.Tensor:
+        pred_h = pred_h.cpu().detach().numpy()
     for i in range(gt_h.shape[0]):
         delta_gt = cv2.perspectiveTransform(np.asarray([four_points]), gt_h[i]).squeeze() - four_points
         delta_pred = cv2.perspectiveTransform(np.asarray([four_points]), pred_h[i]).squeeze() - four_points

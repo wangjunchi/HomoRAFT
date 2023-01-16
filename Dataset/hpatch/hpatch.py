@@ -11,7 +11,7 @@ from torch.utils.data import Dataset, DataLoader
 from torchvision.transforms import transforms
 
 from Dataset.utils.data_reader import resize_and_crop
-
+from Dataset.utils.homographies import compute_valid_mask
 class HPatchesDataset(Dataset):
     """
     HPatches dataset (for evaluation)
@@ -78,9 +78,16 @@ class HPatchesDataset(Dataset):
             img1 = torch.from_numpy(img1).permute(2, 0, 1).float()
             img2 = torch.from_numpy(img2).permute(2, 0, 1).float()
 
+        H_inv = np.linalg.inv(H)
+        valid_mask_0 = compute_valid_mask(H_inv, img1.shape[1:], 3)
+        valid_mask_1 = compute_valid_mask(H, img2.shape[1:], 3)
+
+
         return {'patch_1': img1,
                 'patch_2': img2,
-                'gt_H': H
+                'gt_H': H,
+                'mask_0': valid_mask_0,
+                'mask_1': valid_mask_1
                 }
 
     def adapt_homography_to_preprocessing(self, H, img_shape0, img_shape1):
@@ -108,6 +115,7 @@ class HPatchesDataset(Dataset):
 
         return translation1 @ scaling1 @ H @ scaling0 @ translation0
 
+
 if __name__ == '__main__':
     # dataset
     dataset = HPatchesDataset(csv_file='csv/hpatches_1_2.csv',
@@ -134,6 +142,9 @@ if __name__ == '__main__':
         img1 = (img1 * 255).astype(np.uint8)
         img2 = target_image.numpy()[0].transpose(1, 2, 0)
         img2 = (img2 * 255).astype(np.uint8)
+
+        mask_0 = sample_batched['mask_0'].numpy()[0]
+        mask_1 = sample_batched['mask_1'].numpy()[0]
 
         H = sample_batched['gt_H'].numpy()[0]
         # apply homography

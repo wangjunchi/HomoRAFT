@@ -36,12 +36,12 @@ data:
             patch_ratio: 0.85
             max_angle: 1.5
             allow_artifacts: true
-            n_angles: 100
-            n_scales: 20
+#            n_angles: 100
+#            n_scales: 20
         valid_border_margin: 3
 
 model:
-    pretrained_model: None
+    pretrained_model:
 
 trainer:
     epochs: 25
@@ -50,6 +50,7 @@ trainer:
     milestones: [30000, 60000, 90000]
     lr_decay: 0.1
     save_period: 1
+    loss: 'combined_loss'
 
 
 logging:

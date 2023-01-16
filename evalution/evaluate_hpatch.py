@@ -14,7 +14,7 @@ from Utils.metrics import compute_mace, compute_homography
 
 
 
-def main():
+def main(iterations = 10):
 
     # Argument parsing
     parser = argparse.ArgumentParser(description='Raft evaluation on HPatches')
@@ -26,7 +26,7 @@ def main():
     parser.add_argument('--image-data-path', type=str,
                         default='/home/junchi/sp1/dataset/hpatches-sequences-release',
                         help='path to folder containing training images')
-    parser.add_argument('--ckpt', type=str, default='../model_24_epoch_new.pth',
+    parser.add_argument('--ckpt', type=str, default='../model_29_epoch_no_mask.pth',
                         help='Checkpoint to use')
     parser.add_argument('--batch-size', type=int, default=1,
                         help='evaluation batch size')
@@ -57,6 +57,8 @@ def main():
     with torch.no_grad():
         number_of_scenes = 5
         res = []
+        res_2x = []
+        res_thres =[[] for i in range(10)]
         # loop over scenes (1-2, 1-3, 1-4, 1-5, 1-6)
         for id, k in enumerate(range(2, number_of_scenes + 2)):
             test_dataset = \
@@ -73,22 +75,46 @@ def main():
 
             pbar = tqdm(enumerate(test_dataloader), total=len(test_dataloader))
             correct = 0
+            correct_2x = 0
             epes = []
+            corret_thres = [0 for i in range(10)]
+            iteration = iterations
             for _, mini_batch in pbar:
                 # get data
                 img1 = mini_batch['patch_1'].to(device)
                 img2 = mini_batch['patch_2'].to(device)
+                mask_0 = mini_batch['mask_0'].to(device)
+                mask_1 = mini_batch['mask_1'].to(device)
 
-                # mask = mini_batch['mask'].to(device)
 
                 # compute flow
-                flow_pred12 = model(img1, img2, iters=10)
+                flow_pred12, homo_pred, residual, weight = model(img1, img2, mask_0, iters=iteration)
                 final_flow12 = flow_pred12[-1]
 
                 h_pred12 = compute_homography(final_flow12)
                 h_pred12_1 = h_pred12
 
-                flow_pred21 = model(img2, img1, iters=10)
+                weight = weight[-1]
+                # draw weight map
+                weight = weight.squeeze().cpu().numpy()
+                weight = cv2.resize(weight, (320, 240))
+                weight_map = cv2.applyColorMap((weight * 255).astype(np.uint8), cv2.COLORMAP_JET)
+                # convert to rgb
+                weight_map = cv2.cvtColor(weight_map, cv2.COLOR_BGR2RGB)
+                # prepare image
+                image_1 = mini_batch['patch_1'].squeeze().numpy()
+                image_1 = np.transpose(image_1, (1, 2, 0))
+                image_1 = (image_1 * 255).astype(np.uint8)
+                image_2 = mini_batch['patch_2'].squeeze().numpy()
+                image_2 = np.transpose(image_2, (1, 2, 0))
+                image_2 = (image_2 * 255).astype(np.uint8)
+                # overlap weight map to image_1
+                image_1 = cv2.addWeighted(image_1, 0.7, weight_map, 0.3, 0)
+                # cat image_1 and image_2
+                image = np.concatenate((image_1, image_2), axis=1)
+
+
+                flow_pred21, homo_pred, residual, weight = model(img2, img1, mask_1, iters=iteration)
                 final_flow21 = flow_pred21[-1]
                 h_pred21 = compute_homography(final_flow21)
                 h_pred12_2 = np.linalg.inv(h_pred21)
@@ -100,18 +126,50 @@ def main():
                 four_points = np.asarray(four_points, dtype=np.float32)
 
 
+                # # upsampling the flow
+                # final_flow12_2x = 2.0 * F.interpolate(final_flow12, size=(480, 640), mode='bilinear', align_corners=True)
+                # final_flow21_2x = 2.0 * F.interpolate(final_flow21, size=(480, 640), mode='bilinear', align_corners=True)
+                # h_pred12_2x_1 = compute_homography(final_flow12_2x)
+                # h_pred21_2x = compute_homography(final_flow21_2x)
+                # h_pred12_2x_2 = np.linalg.inv(h_pred21_2x)
                 for i in range(h_pred12_1.shape[0]):
                     H = h_gt[i]
                     H_inv = np.linalg.inv(H)
                     H_hat = (h_pred12_1[i] + h_pred12_2[i])/2
+                    # H_hat = h_pred12_1[i]
 
                     warpped = cv2.perspectiveTransform(np.asarray([four_points]), H_hat).squeeze()
                     rewarp = cv2.perspectiveTransform(np.asarray([warpped]), H_inv).squeeze()
                     delta = four_points - rewarp
                     error = np.linalg.norm(delta, axis=1)
                     error = np.mean(error)
-                    if error < 3:
+                    if error <= 3:
                         correct += 1
+
+                    for i in range(10):
+                        if error <= i+1:
+                            corret_thres[i] += 1
+
+                    # # evaluate at 2x scale
+                    # S = np.array([2, 0, 0, 0, 2, 0, 0, 0, 1]).reshape(3, 3)
+                    # H_2x = np.matmul(S, np.matmul(H, np.linalg.inv(S)))
+                    # H_inv_2x = np.linalg.inv(H_2x)
+                    # H_hat_2x = (h_pred12_2x_1[i] + h_pred12_2x_2[i]) / 2
+                    # four_points_2x = [[0, 0],
+                    #                [640 - 1, 0],
+                    #                [640 - 1, 480 - 1],
+                    #                [0, 480 - 1]]
+                    # four_points_2x = np.asarray(four_points_2x, dtype=np.float32)
+                    # warpped_2x = cv2.perspectiveTransform(np.asarray([four_points_2x]), H_hat_2x).squeeze()
+                    # rewarp_2x = cv2.perspectiveTransform(np.asarray([warpped_2x]), H_inv_2x).squeeze()
+                    # delta_2x = four_points_2x - rewarp_2x
+                    # error_2x = np.linalg.norm(delta_2x, axis=1)
+                    # error_2x = np.mean(error_2x)
+                    # if error_2x <= 3:
+                    #     correct_2x += 1
+
+
+
 
                     # compute the average endpoint error
                     S = np.array([0.75, 0, 0, 0, 1, 0, 0, 0, 1]).reshape(3, 3)
@@ -134,16 +192,30 @@ def main():
                     est_flow = est_flow[mask_gt, :]
 
                     epe = np.linalg.norm(target_flow - est_flow, axis=-1)
+                    epe = np.clip(epe, 0, 240)
+                    # if np.mean(epe) < 100:
                     epes.append(np.mean(epe))
             print('Scene {} accuracy: {}'.format(id+1, correct/len(test_dataset)))
+            # print('Scene {} accuracy at 2x scale: {}'.format(id+1, correct_2x/len(test_dataset)))
             print('Scene {} average epe: {}'.format(id+1, np.mean(epes)))
-            print('Scene {} median epe: {}'.format(id + 1, np.median(epes)))
             res.append(correct / len(test_dataloader))
+            res_2x.append(correct_2x / len(test_dataloader))
+
+            for i in range(10):
+                res_thres[i].append(corret_thres[i] / len(test_dataloader))
 
 
 
         print(res)
         print('Average accuracy: {}'.format(np.mean(res)))
+        # print('Average accuracy at 2x scale: {}'.format(np.mean(res_2x)))
+
+        for i in range(10):
+            print('Average accuracy at {} pixel: {}'.format(i+1, np.mean(res_thres[i])))
 
 if __name__ == '__main__':
-    main()
+    test_iterations = [1,3,5,8,10,12,14,16,20]
+    for i in test_iterations:
+        print('Test iteration {}'.format(i))
+        main(i)
+        print('---------------------')
