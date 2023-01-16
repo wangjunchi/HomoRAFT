@@ -12,8 +12,7 @@ from tqdm import tqdm
 import torch.nn.functional as F
 
 from Dataset.coco import Coco
-from Models.Raft_BA import Model as RAFT_BA
-from Models.RAFT import Model as RAFT
+from Models.Raft import Model as RAFT
 
 from Utils.metrics import compute_mace, compute_homography
 

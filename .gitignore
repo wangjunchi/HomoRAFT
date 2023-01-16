@@ -4,3 +4,6 @@ lsf.*
 .vs
 *.pyc
 *.out
+*.pth
+*.sh
+*.sbatch
